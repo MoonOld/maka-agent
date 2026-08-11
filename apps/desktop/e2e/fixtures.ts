@@ -5,7 +5,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { createConnectionStore, createFileCredentialStore, createSettingsStore } from '@maka/storage';
+import { createSettingsStore } from '@maka/storage';
+import { resolveStorageRoot, tryAcquireInteractiveRootOwner } from '@maka/storage/root-authority';
+import { openInteractiveRuntimePolicyStoresForWrite } from '@maka/storage/runtime-policy-stores';
 import { buildFixtureEnv, isCiLinuxDisplay } from '../../../scripts/fixture-env.mjs';
 import { closeElectronApplication } from '../../../scripts/electron-lifecycle.mjs';
 
@@ -46,34 +48,101 @@ export async function waitForInvocableSkills(
 /**
  * Pre-seed a real-looking connection into the throwaway workspace so onboarding
  * clears and the composer is enabled. Actual sessions still run on the fake
- * backend (BackendRegistry override in main); this only satisfies the UI
- * readiness gates. Kept in the fixture so test data stays out of production main.
+ * backend in the Desktop E2E Runtime Host candidate; this only satisfies the
+ * UI readiness gates. Kept in the fixture so test data stays out of production main.
  */
 async function seedE2eConnection(
   userDataDir: string,
   extraConnectionCount = 0,
 ): Promise<void> {
   const workspaceRoot = path.join(userDataDir, 'workspaces', 'default');
-  const connections = createConnectionStore(workspaceRoot);
-  const credentials = createFileCredentialStore(workspaceRoot);
-  await connections.create({
-    slug: 'e2e',
-    name: 'E2E',
-    providerType: 'anthropic',
-    defaultModel: 'claude-sonnet-4-5-20250929',
-  });
-  await credentials.setSecret('e2e', 'api_key', 'e2e-placeholder');
-  for (let index = 0; index < extraConnectionCount; index += 1) {
-    const slug = `e2e-extra-${index + 1}`;
-    await connections.create({
-      slug,
-      name: `E2E Extra ${index + 1}`,
-      providerType: 'anthropic',
-      defaultModel: `claude-e2e-${index + 1}`,
+  const capability = await resolveStorageRoot({ path: workspaceRoot, kind: 'interactive' });
+  const owner = await tryAcquireInteractiveRootOwner(capability);
+  if (!owner) throw new Error('Unable to acquire the E2E workspace for connection setup');
+
+  try {
+    const stores = await openInteractiveRuntimePolicyStoresForWrite(owner.lease);
+    const connections = [
+      {
+        slug: 'e2e',
+        name: 'E2E',
+        modelId: 'claude-sonnet-4-5-20250929',
+      },
+      ...Array.from({ length: extraConnectionCount }, (_, index) => ({
+        slug: `e2e-extra-${index + 1}`,
+        name: `E2E Extra ${index + 1}`,
+        modelId: `claude-e2e-${index + 1}`,
+      })),
+    ];
+    let defaultConnectionId: string | undefined;
+
+    for (const connection of connections) {
+      const catalog = await stores.connectionCatalog.getSnapshot();
+      const created = await stores.connectionCatalog.create({
+        expectedCatalogRevision: catalog.revision,
+        connection: {
+          slug: connection.slug,
+          name: connection.name,
+          providerType: 'anthropic',
+          enabled: true,
+          enabledModelIds: [connection.modelId],
+        },
+      });
+      if (created.kind !== 'committed') {
+        throw new Error(`Unable to create the ${connection.slug} E2E connection: ${created.kind}`);
+      }
+      const entry = created.snapshot.connections.find(({ slug }) => slug === connection.slug);
+      if (!entry) throw new Error(`The ${connection.slug} E2E connection was not persisted`);
+
+      const credential = await stores.credentialVault.set({
+        locator: {
+          scope: 'connection',
+          connectionId: entry.connectionId,
+          kind: 'api_key',
+        },
+        expected: null,
+        secret: 'e2e-placeholder',
+      });
+      if (credential.kind !== 'committed') {
+        throw new Error(
+          `Unable to store the ${connection.slug} E2E credential: ${credential.kind}`,
+        );
+      }
+
+      const modelFetch = await stores.operations.beginModelFetch(entry.connectionId);
+      if (modelFetch.kind !== 'ready') {
+        throw new Error(
+          `Unable to prepare the ${connection.slug} E2E model inventory: ${modelFetch.kind}`,
+        );
+      }
+      const modelInventory = await stores.operations.completeModelFetch(modelFetch.ticket, {
+        models: [{ id: connection.modelId }],
+        source: 'fallback',
+        fetchedAt: 0,
+      });
+      if (modelInventory.kind !== 'committed') {
+        throw new Error(
+          `Unable to store the ${connection.slug} E2E model inventory: ${modelInventory.kind}`,
+        );
+      }
+      if (connection.slug === 'e2e') defaultConnectionId = entry.connectionId;
+    }
+
+    if (!defaultConnectionId) throw new Error('The default E2E connection was not created');
+    const catalog = await stores.connectionCatalog.getSnapshot();
+    const selected = await stores.connectionCatalog.setDefaultTarget({
+      expectedCatalogRevision: catalog.revision,
+      target: {
+        connectionId: defaultConnectionId,
+        modelId: 'claude-sonnet-4-5-20250929',
+      },
     });
-    await credentials.setSecret(slug, 'api_key', 'e2e-placeholder');
+    if (selected.kind !== 'committed') {
+      throw new Error(`Unable to select the default E2E connection: ${selected.kind}`);
+    }
+  } finally {
+    await owner.close();
   }
-  await connections.setDefault('e2e');
 }
 
 async function seedE2eLocale(userDataDir: string, locale: 'zh' | 'en'): Promise<void> {

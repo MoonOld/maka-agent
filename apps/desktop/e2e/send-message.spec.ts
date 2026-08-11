@@ -16,6 +16,38 @@ import { test, expect, COMPOSER_INPUT } from './fixtures';
 test('Enter mid-IME commits the candidate, then an ordinary send streams a reply', async ({
   window: page,
 }) => {
+  const authority = await page.evaluate(async () => {
+    const snapshot = await window.maka.onboarding.getSnapshot();
+    return {
+      state: snapshot.state,
+      defaultSlug: snapshot.defaultSlug,
+      connections: snapshot.connections.map((connection) => ({
+        slug: connection.slug,
+        defaultModel: connection.defaultModel,
+        enabledModelIds: connection.enabledModelIds,
+        modelIds: connection.models?.map(({ id }) => id),
+      })),
+      hasSecret: await window.maka.connections.hasSecret('e2e'),
+    };
+  });
+  expect(authority).toEqual({
+    state: {
+      kind: 'ready_empty',
+      connectionSlug: 'e2e',
+      model: 'claude-sonnet-4-5-20250929',
+    },
+    defaultSlug: 'e2e',
+    connections: [
+      {
+        slug: 'e2e',
+        defaultModel: 'claude-sonnet-4-5-20250929',
+        enabledModelIds: ['claude-sonnet-4-5-20250929'],
+        modelIds: ['claude-sonnet-4-5-20250929'],
+      },
+    ],
+    hasSecret: true,
+  });
+
   const composer = page.locator(COMPOSER_INPUT);
   await composer.fill('中文草稿');
   await composer.evaluate((element) => {
