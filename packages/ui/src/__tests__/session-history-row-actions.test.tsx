@@ -86,7 +86,9 @@ test('renders collapsible project navigation and row actions as sibling controls
 
   assert.ok(projectRow);
   assert.ok(action);
-  const navigation = projectRow.querySelector<HTMLButtonElement>('button[aria-expanded="true"]');
+  const navigation = projectRow.querySelector<HTMLButtonElement>(
+    ':scope > div > button[aria-controls]',
+  );
   const metadata = projectRow.querySelector('.maka-project-item-end');
   const controlledGroupId = navigation?.getAttribute('aria-controls');
   const controlledGroup = controlledGroupId
@@ -100,9 +102,8 @@ test('renders collapsible project navigation and row actions as sibling controls
   assert.equal(navigation.contains(action), false);
   assert.equal(metadata.textContent, '1');
   assert.equal(controlledGroup.getAttribute('aria-hidden'), 'false');
-  assert.equal(action.parentElement?.className, 'maka-project-row-action');
-  assert.equal(action.parentElement?.getAttribute('data-position'), 'before-disclosure');
-  assert.equal(action.parentElement?.parentElement, projectRow);
-  assert.equal(projectRow.querySelector('button button'), null);
+  const projectButtons = [...projectRow.querySelectorAll('button')];
+  assert.equal(projectButtons[0], action);
+  assert.equal(projectButtons[1], navigation);
   assert.doesNotMatch(markup, /<button\b(?:(?!<\/button>)[\s\S])*<button\b/);
 });

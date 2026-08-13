@@ -372,7 +372,17 @@ function ProjectNavRow(props: {
   const hasActions = props.project !== undefined && props.projectActions !== undefined;
   return (
     <div data-project-id={props.groupKey} className="maka-project-row">
+      {props.project && props.projectActions ? (
+        <ProjectItemActions
+          key="actions"
+          project={props.project}
+          actions={props.projectActions}
+          onStartRename={props.onStartRename}
+          position={hasSessions ? 'before-disclosure' : 'trailing'}
+        />
+      ) : null}
       <SideNavItem
+        key="navigation"
         label={props.label}
         icon={FolderOpen}
         collapsible={hasSessions ? { defaultIsCollapsed: false } : undefined}
@@ -389,14 +399,6 @@ function ProjectNavRow(props: {
           <VStack gap={0.5}>{props.sessions.map((session) => props.renderSession(session))}</VStack>
         ) : undefined}
       </SideNavItem>
-      {props.project && props.projectActions ? (
-        <ProjectItemActions
-          project={props.project}
-          actions={props.projectActions}
-          onStartRename={props.onStartRename}
-          position={hasSessions ? 'before-disclosure' : 'trailing'}
-        />
-      ) : null}
     </div>
   );
 }
@@ -477,7 +479,7 @@ function ProjectItemMeta(props: {
       )}
       <Badge variant="neutral" label={props.sessionCount} />
       {props.reserveAction ? (
-        <span className="maka-project-row-trailing" aria-hidden="true" />
+        <span className="maka-session-row-trailing" aria-hidden="true" />
       ) : null}
     </span>
   );
@@ -569,12 +571,7 @@ function ProjectItemActions(props: {
       ];
 
   return (
-    <span
-      className="maka-project-row-action"
-      data-position={props.position}
-      ref={trailingRef}
-      onKeyDown={(event) => event.stopPropagation()}
-    >
+    <span className="maka-session-row-action" data-position={props.position} ref={trailingRef}>
       <MoreMenu
         size="sm"
         label={copy.projectActionsAriaLabel(project.name)}
