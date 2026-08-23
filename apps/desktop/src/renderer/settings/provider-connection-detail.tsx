@@ -51,6 +51,7 @@ import {
 } from '@maka/ui';
 import { PasswordInput } from './password-input';
 import { SettingsExpandableRow } from './settings-expandable-row';
+import { SettingsRow } from './settings-section';
 import { getProviderSettingsCopy } from '../locales/settings-provider-copy';
 import { providerDisplay } from './provider-display';
 import { AddModelDialog } from './provider-add-model-dialog';
@@ -82,6 +83,7 @@ import {
   type RequestHeaderDraft,
 } from './request-customization-editor';
 import { bulkThinkingLevelStates } from './relay-thinking-bulk';
+import { providerEndpointPresentation } from './provider-endpoint-presentation';
 
 export function ConnectionDetail(props: ConnectionDetailProps) {
   const defaults = PROVIDER_DEFAULTS[props.connection.providerType];
@@ -343,15 +345,15 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
       if (mounted.current) setRequestCustomizationBusy(false);
     }
   }
-  // Most of the 60 providers publish a fixed endpoint; editing it there can
-  // only break the connection, and a proxy belongs in 设置 · 通用 · 网络, not in
-  // a per-connection URL. So the row exists only where the address is genuinely
-  // the user's: a service with no published endpoint (the *-compatible ones), or
-  // a local runtime whose port is a convention rather than a fact. A derived
-  // endpoint (Cloudflare builds one from the account id) is nobody's to type.
-  const showsEndpoint = !needsOAuth
-    && !defaults.baseUrlTemplate
-    && (!defaults.baseUrl || defaults.category === 'local');
+  // Every known connection reports where requests go. Editability remains the
+  // narrower authority: built-in and derived endpoints are visible but fixed,
+  // while custom relays and local runtimes keep their existing editor.
+  const endpoint = providerEndpointPresentation(connection);
+  const endpointValue = endpoint.value
+    ? <code className="settingsReadOnlyValue providerEndpointValue" data-mono="true">{endpoint.value}</code>
+    : endpoint.emptyState === 'managed'
+      ? copy.endpointManaged
+      : copy.endpointMissing;
 
   return (
     /* Three sections, each a heading with a sentence beside its controls, one
@@ -457,8 +459,7 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
             </SettingsExpandableRow>
           </VStack>
         )}
-        {(supportsApiKey || showsEndpoint) && (
-          <VStack gap={0}>
+        <VStack gap={0}>
             <Divider />
             {supportsApiKey && (
               <>
@@ -497,11 +498,11 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
               <Divider />
               </>
             )}
-            {showsEndpoint && (
+            {endpoint.editable ? (
               <>
               <SettingsExpandableRow
                 label={copy.endpoint}
-                value={savedBaseUrl || copy.endpointDefault}
+                value={endpointValue}
                 actionLabel={copy.edit}
                 actionAriaLabel={`${copy.edit}: ${copy.endpoint}`}
                 isEditing={editingRow === 'endpoint'}
@@ -524,14 +525,18 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
               </SettingsExpandableRow>
               <Divider />
               </>
+            ) : (
+              <>
+                <SettingsRow
+                  label={copy.endpoint}
+                  description={endpointValue}
+                  align="start"
+                />
+                <Divider />
+              </>
             )}
-          </VStack>
-        )}
+        </VStack>
       </DetailSection>
-      {/* The rows draw the closing rule themselves; without them the section
-          still needs one. Two rules with a gap between them read as an empty
-          row, so only ever one. */}
-      {!supportsApiKey && !showsEndpoint && !retired && <Divider />}
       {/* Everything below writes to the connection, and a retired one accepts
           no writes: the catalog refuses a model or request-body change, and the
           credential vault refuses a request header. Rendering the editors would
