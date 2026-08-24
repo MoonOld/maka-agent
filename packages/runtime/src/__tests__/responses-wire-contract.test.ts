@@ -647,6 +647,100 @@ describe('responses wire request body', () => {
     assert.deepEqual(finishStep.usage.raw?.x_tools, { web_search: { count: 1 } });
   });
 
+  test('Open Responses preserves search, open-page, and find-in-page actions', async () => {
+    let body: Record<string, unknown> | undefined;
+    const calls = [
+      {
+        type: 'web_search_call',
+        id: 'search-1',
+        status: 'completed',
+        action: { type: 'search', queries: ['latest Maka'] },
+      },
+      {
+        type: 'web_search_call',
+        id: 'open-1',
+        status: 'completed',
+        action: { type: 'open_page', url: 'https://maka.example/releases' },
+      },
+      {
+        type: 'web_search_call',
+        id: 'find-1',
+        status: 'completed',
+        action: {
+          type: 'find_in_page',
+          url: 'https://maka.example/releases',
+          pattern: 'WebSearch',
+        },
+      },
+    ];
+    const completed = {
+      id: 'response-page-actions',
+      object: 'response',
+      created_at: 1,
+      model: 'deepseek-v4-flash',
+      status: 'completed',
+      output: calls,
+      usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7 },
+    };
+    const events = [
+      { type: 'response.created', response: { id: completed.id } },
+      ...calls.flatMap((call, output_index) => [
+        {
+          type: 'response.output_item.added',
+          output_index,
+          item: { ...call, status: 'in_progress', action: undefined },
+        },
+        { type: 'response.output_item.done', output_index, item: call },
+      ]),
+      { type: 'response.completed', response: completed },
+    ];
+    const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(
+        `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as unknown as typeof globalThis.fetch;
+    const model = getAIModel({
+      connection: { ...conn('deepseek'), baseUrl: 'https://deepseek.example' },
+      apiKey: 'deepseek-key',
+      modelId: 'deepseek-v4-flash',
+      fetch,
+    });
+    const tools = lowerModelTools({
+      WebSearch: {
+        kind: 'provider',
+        providerTool: { kind: 'openai-web-search', searchContextSize: 'medium' },
+      },
+    });
+    const result = streamText({
+      model,
+      messages: [{ role: 'user', content: 'Search, open, and find.' }],
+      tools: tools as ToolSet,
+      maxRetries: 0,
+    });
+    const parts = [];
+    for await (const part of result.fullStream) parts.push(part);
+
+    assert.deepEqual(body?.tools, [{ type: 'web_search' }]);
+    assert.deepEqual(
+      parts
+        .filter((part) => part.type === 'tool-result')
+        .map((part) => (part.type === 'tool-result' ? part.output : undefined)),
+      [
+        { action: { type: 'search', queries: ['latest Maka'] } },
+        { action: { type: 'openPage', url: 'https://maka.example/releases' } },
+        {
+          action: {
+            type: 'findInPage',
+            url: 'https://maka.example/releases',
+            pattern: 'WebSearch',
+          },
+        },
+      ],
+    );
+  });
+
   test('adds the V2 trigger only through the explicit OpenAI provider option', async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
