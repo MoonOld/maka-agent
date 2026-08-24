@@ -11534,7 +11534,20 @@ describe('AiSdkBackend thinking persistence', () => {
     );
   });
 
-  test('Alibaba Responses fails when streamed reasoning differs from the final summary', async () => {
+  test('Alibaba Responses fails when streamed reasoning differs from the final summary', async (t) => {
+    // The early stop tears down the SDK stream while its settlement promises
+    // are still in flight; when those rejections land is scheduler-owned (on
+    // Windows they were observed after the test boundary). Trap unhandled
+    // rejections for the lifetime of this turn and assert the mismatch path
+    // leaves none behind, on every event loop, not just the one that raced.
+    const leakedRejections: unknown[] = [];
+    const trapUnhandledRejection = (reason: unknown): void => {
+      leakedRejections.push(reason);
+    };
+    process.on('unhandledRejection', trapUnhandledRejection);
+    t.after(() => {
+      process.off('unhandledRejection', trapUnhandledRejection);
+    });
     const appended: AssistantMessage[] = [];
     const model = new MockLanguageModelV4({
       doStream: {
@@ -11628,6 +11641,14 @@ describe('AiSdkBackend thinking persistence', () => {
       }),
     );
     assert.ok(compactPrompt(recoveryModel));
+    // Let SDK teardown settle across macrotask cycles so a leaked rejection
+    // is caught before the trap comes off.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.deepEqual(
+      leakedRejections,
+      [],
+      'reasoning-mismatch teardown must not leak unhandled rejections',
+    );
   });
 
   test('Alibaba Responses keeps a finalized item valid when the next item id is unsafe', async () => {
