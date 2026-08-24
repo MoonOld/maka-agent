@@ -428,6 +428,16 @@ export class ModelAdapter {
             sdk.usage.catch(() => undefined),
             sdk.finishReason.catch(() => undefined),
           ]);
+          // An early-stopping consumer (a provider-mismatch throw, a user
+          // stop) ends this stream before any finish chunk exists, so the SDK
+          // rejects every result promise during teardown. `usage` and
+          // `finishReason` are consumed above; `response` is only read on the
+          // completed continuation path below. Sink it unconditionally so the
+          // error path can never surface an unhandled rejection after the
+          // turn unwinds — the timing of that settlement is scheduler-owned
+          // (observed post-test on Windows), and Node's default makes an
+          // unhandled rejection a crash.
+          void Promise.resolve(sdk.response).catch(() => undefined);
           const finishReason =
             streamedFinishReason ?? rawFinishReasonString(sdkFinishReason) ?? 'unknown';
           const rawFinishReason =
