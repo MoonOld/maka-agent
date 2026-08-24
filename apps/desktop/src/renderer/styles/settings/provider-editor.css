@@ -36,6 +36,14 @@
   word-break: normal;
 }
 
+/* The model-override note is a second sentence under the endpoint's machine
+   text: block layout keeps it off the URL line, muted color keeps the URL
+   the primary fact. */
+.providerEndpointNote {
+  display: block;
+  color: var(--muted-foreground);
+}
+
 @media (max-width: 980px) {
   .app {
     grid-template-columns: 1fr;

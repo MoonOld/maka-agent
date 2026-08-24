@@ -83,7 +83,7 @@ import {
   type RequestHeaderDraft,
 } from './request-customization-editor';
 import { bulkThinkingLevelStates } from './relay-thinking-bulk';
-import { providerEndpointPresentation } from './provider-endpoint-presentation';
+import { endpointCarriesCredentials, providerEndpointPresentation } from './provider-endpoint-presentation';
 
 export function ConnectionDetail(props: ConnectionDetailProps) {
   const defaults = PROVIDER_DEFAULTS[props.connection.providerType];
@@ -354,6 +354,17 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
     : endpoint.emptyState === 'managed'
       ? copy.endpointManaged
       : copy.endpointMissing;
+  // Model-level endpoint overrides mean the connection-level base is not the
+  // whole truth for every model; say so under the value rather than implying
+  // one address serves all models.
+  const endpointNote = endpoint.modelOverrides
+    ? <span className="providerEndpointNote">{copy.endpointModelOverridesNote}</span>
+    : null;
+  const endpointDisplay = endpointNote ? <>{endpointValue}{endpointNote}</> : endpointValue;
+  // A credential-bearing saved endpoint must not prefill a plain text input:
+  // the editor falls back to the masked-by-default PasswordInput, which the
+  // user can deliberately reveal.
+  const endpointHasCredentials = endpointCarriesCredentials(savedBaseUrl);
 
   return (
     /* Three sections, each a heading with a sentence beside its controls, one
@@ -502,7 +513,7 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
               <>
               <SettingsExpandableRow
                 label={copy.endpoint}
-                value={endpointValue}
+                value={endpointDisplay}
                 actionLabel={copy.edit}
                 actionAriaLabel={`${copy.edit}: ${copy.endpoint}`}
                 isEditing={editingRow === 'endpoint'}
@@ -514,14 +525,26 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
                 onCancel={() => { setBaseUrl(savedBaseUrl); setEditingRow(null); }}
                 onSave={async () => { if (await save('endpoint')) setEditingRow(null); }}
               >
-                <TextInput
-                  label={copy.endpoint}
-                  isLabelHidden
-                  value={baseUrl}
-                  onChange={setBaseUrl}
-                  placeholder={defaults.baseUrl}
-                  isDisabled={allActionsBusy}
-                />
+                {endpointHasCredentials ? (
+                  <PasswordInput
+                    value={baseUrl}
+                    onChange={setBaseUrl}
+                    placeholder={defaults.baseUrl}
+                    label={copy.endpoint}
+                    isLabelHidden
+                    description={copy.endpointCredentialsMasked}
+                    isDisabled={allActionsBusy}
+                  />
+                ) : (
+                  <TextInput
+                    label={copy.endpoint}
+                    isLabelHidden
+                    value={baseUrl}
+                    onChange={setBaseUrl}
+                    placeholder={defaults.baseUrl}
+                    isDisabled={allActionsBusy}
+                  />
+                )}
               </SettingsExpandableRow>
               <Divider />
               </>
@@ -529,7 +552,7 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
               <>
                 <SettingsRow
                   label={copy.endpoint}
-                  description={endpointValue}
+                  description={endpointDisplay}
                   align="start"
                 />
                 <Divider />
