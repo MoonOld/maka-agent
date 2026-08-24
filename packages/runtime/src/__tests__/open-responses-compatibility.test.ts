@@ -24,6 +24,7 @@ import { createOpenResponsesCompatibilityFinalizer } from '../open-responses-com
 test('applies the declared Open Responses body policies', () => {
   const finalize = createOpenResponsesCompatibilityFinalizer('alibaba-token-plan');
   assert.ok(finalize);
+  const tool = { type: 'function', name: 'lookup' };
   assert.deepEqual(finalize({ model: 'qwen3.8-max', store: true, tool_choice: 'auto' }), {
     model: 'qwen3.8-max',
     store: false,
@@ -33,10 +34,36 @@ test('applies the declared Open Responses body policies', () => {
     model: 'qwen3.8-max',
     store: false,
   });
-  for (const toolChoice of ['required', { type: 'function', name: 'lookup' }]) {
-    assert.throws(
-      () => finalize({ tool_choice: toolChoice }),
-      /does not support forced tool_choice/,
-    );
-  }
+  assert.deepEqual(finalize({ tools: [tool], tool_choice: 'required' }), {
+    tools: [tool],
+    tool_choice: 'required',
+    store: false,
+  });
+  assert.deepEqual(
+    finalize({
+      tools: [tool],
+      tool_choice: { type: 'allowed_tools', mode: 'required', tools: [tool] },
+    }),
+    {
+      tools: [tool],
+      tool_choice: { type: 'allowed_tools', mode: 'required', tools: [tool] },
+      store: false,
+    },
+  );
+  assert.throws(
+    () => finalize({ tools: [], tool_choice: 'required' }),
+    /requires exactly one tool/,
+  );
+  assert.throws(
+    () =>
+      finalize({
+        tools: [tool],
+        tool_choice: { type: 'allowed_tools', mode: 'required', tools: [] },
+      }),
+    /requires exactly one tool/,
+  );
+  assert.throws(
+    () => finalize({ tools: [tool], tool_choice: tool }),
+    /does not support this tool_choice object/,
+  );
 });

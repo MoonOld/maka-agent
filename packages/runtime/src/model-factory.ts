@@ -183,7 +183,7 @@ export function getAIModel(input: ModelFactoryInput): LanguageModelV4 {
         if (reasoningReplay.contract.adapter === 'open-responses') {
           // Request customization is applied first; provider compatibility is
           // the final authority before network dispatch, so an overlay cannot
-          // re-enable storage or force a tool-choice shape the provider rejects.
+          // re-enable storage or violate the provider's tool-choice contract.
           const responsesFetch = createRequestCustomizationFetch(baseFetch, {
             ...requestCustomization,
             finalizeBody: createOpenResponsesCompatibilityFinalizer(

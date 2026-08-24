@@ -452,6 +452,73 @@ describe('responses wire request body', () => {
     assert.deepEqual(bodies[0]?.reasoning, { effort: 'medium' });
   });
 
+  test('Alibaba compatibility preserves documented required tool choices', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        id: 'response-required-tool',
+        object: 'response',
+        created_at: 1,
+        model: 'qwen3.8-max',
+        status: 'completed',
+        output: [],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      });
+    }) as unknown as typeof globalThis.fetch;
+    const connection = {
+      ...conn('alibaba-token-plan-cn'),
+      baseUrl: 'https://token-plan.example/compatible-mode/v1',
+    };
+    const model = getAIModel({
+      connection,
+      apiKey: 'token-plan-key',
+      modelId: 'qwen3.8-max',
+      fetch,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'look it up' }] }],
+      tools: [
+        {
+          type: 'function',
+          name: 'lookup',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        },
+      ],
+      toolChoice: { type: 'required' },
+    });
+
+    const allowedToolsChoice = {
+      type: 'allowed_tools',
+      mode: 'required',
+      tools: [{ type: 'function', name: 'lookup' }],
+    };
+    const overlayModel = getAIModel({
+      connection: { ...connection, requestBodyOverlay: { tool_choice: allowedToolsChoice } },
+      apiKey: 'token-plan-key',
+      modelId: 'qwen3.8-max',
+      fetch,
+    });
+    await overlayModel.doGenerate({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'look it up again' }] }],
+      tools: [
+        {
+          type: 'function',
+          name: 'lookup',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        },
+      ],
+    });
+
+    assert.equal(bodies[0]?.tool_choice, 'required');
+    assert.equal((bodies[0]?.tools as unknown[] | undefined)?.length, 1);
+    assert.equal(bodies[0]?.store, false);
+    assert.deepEqual(bodies[1]?.tool_choice, allowedToolsChoice);
+    assert.equal((bodies[1]?.tools as unknown[] | undefined)?.length, 1);
+    assert.equal(bodies[1]?.store, false);
+  });
+
   test('Alibaba compatibility survives header-only request customization', async () => {
     let body: Record<string, unknown> | undefined;
     let headers: Headers | undefined;
@@ -488,7 +555,7 @@ describe('responses wire request body', () => {
     assert.equal(headers?.get('x-token-plan-routing'), 'custom');
   });
 
-  test('Alibaba stateless request carries the reconstructed summary item', async () => {
+  test('Alibaba non-stored request carries the reconstructed summary item', async () => {
     let body: Record<string, unknown> | undefined;
     const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
       body = JSON.parse(String(init?.body));
