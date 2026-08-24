@@ -136,6 +136,15 @@ stream. DeepSeek returned search actions but no structured source rows or URL
 annotations in that response, so Maka preserves citations when supplied but
 does not synthesize or invent them.
 
+After DeepSeek moved to the plaintext `@ai-sdk/open-responses` adapter, native
+search was temporarily disabled because that adapter dropped provider-defined
+tools. Live revalidation on 2026-08-24 against first-party
+`deepseek-v4-flash` completed six provider-executed actions (`search`,
+`open_page`, and `find_in_page`) and a grounded final answer. The shared Open
+Responses mapper preserves those actions while the existing replay boundary
+continues to omit the provider-owned pair from the next request instead of
+emitting a dangling function output.
+
 The same key was also verified through DeepSeek's Anthropic-compatible endpoint:
 one real Maka turn sent `web_search_20250305`, received one provider-executed
 WebSearch result containing ten source rows, and completed the final answer
