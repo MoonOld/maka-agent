@@ -12404,68 +12404,115 @@ describe('AiSdkBackend thinking persistence', () => {
   });
 
   test('Alibaba Responses keeps multiple streamed reasoning items distinct through replay', async () => {
-    const chunks: LanguageModelV4StreamPart[] = [
-      { type: 'stream-start', warnings: [] },
-      { type: 'reasoning-start', id: 'reasoning-item-1' },
-      { type: 'reasoning-delta', id: 'reasoning-item-1', delta: 'first summary' },
-      {
-        type: 'reasoning-end',
-        id: 'reasoning-item-1',
-        providerMetadata: {
-          'alibaba-token-plan-cn': {
-            itemId: 'reasoning-item-1',
-            reasoningSummary: [{ type: 'summary_text', text: 'first summary' }],
-            reasoningContent: null,
-          },
-        },
-      },
-      { type: 'reasoning-start', id: 'reasoning-item-2' },
-      { type: 'reasoning-delta', id: 'reasoning-item-2', delta: 'second summary' },
-      {
-        type: 'reasoning-end',
-        id: 'reasoning-item-2',
-        providerMetadata: {
-          'alibaba-token-plan-cn': {
-            itemId: 'reasoning-item-2',
-            reasoningSummary: [{ type: 'summary_text', text: 'second summary' }],
-            reasoningContent: null,
-          },
-        },
-      },
-      { type: 'reasoning-start', id: 'reasoning-item-empty' },
-      {
-        type: 'reasoning-end',
-        id: 'reasoning-item-empty',
-        providerMetadata: {
-          'alibaba-token-plan-cn': {
-            itemId: 'reasoning-item-empty',
-            reasoningSummary: [],
-            reasoningContent: null,
-          },
-        },
-      },
-      { type: 'text-start', id: 'message-item' },
-      { type: 'text-delta', id: 'message-item', delta: 'answer' },
-      { type: 'text-end', id: 'message-item' },
-      {
-        type: 'finish',
-        finishReason: { unified: 'stop', raw: 'stop' },
-        usage: {
-          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: { total: 3, text: 1, reasoning: 2 },
-        },
-      },
-    ];
-    const firstModel = new MockLanguageModelV4({
-      doStream: {
-        stream: simulateReadableStream({ chunks, initialDelayInMs: null, chunkDelayInMs: null }),
-      },
-    });
     const tokenPlanConnection = {
       slug: 'alibaba-token-plan-cn',
       providerType: 'alibaba-token-plan-cn',
       defaultModel: 'qwen3.8-max',
     } as const;
+    let sequenceNumber = 0;
+    const responseEvents: Array<Record<string, unknown>> = [
+      { type: 'response.created', sequence_number: sequenceNumber++, response: { id: 'r' } },
+    ];
+    for (const [outputIndex, item] of [
+      { id: 'reasoning-item-1', deltas: ['first ', 'summary'] },
+      { id: 'reasoning-item-2', deltas: ['second summary'] },
+      { id: 'reasoning-item-empty', deltas: [] },
+    ].entries()) {
+      responseEvents.push({
+        type: 'response.output_item.added',
+        sequence_number: sequenceNumber++,
+        output_index: outputIndex,
+        item: { type: 'reasoning', id: item.id, status: 'in_progress', content: [], summary: [] },
+      });
+      for (const delta of item.deltas) {
+        responseEvents.push({
+          type: 'response.reasoning_summary_text.delta',
+          sequence_number: sequenceNumber++,
+          item_id: item.id,
+          output_index: outputIndex,
+          summary_index: 0,
+          delta,
+        });
+      }
+      if (item.deltas.length > 0) {
+        responseEvents.push({
+          type: 'response.reasoning_summary_text.done',
+          sequence_number: sequenceNumber++,
+          item_id: item.id,
+          output_index: outputIndex,
+          summary_index: 0,
+          text: item.deltas.join(''),
+        });
+      }
+      responseEvents.push({
+        type: 'response.output_item.done',
+        sequence_number: sequenceNumber++,
+        output_index: outputIndex,
+        item: {
+          type: 'reasoning',
+          id: item.id,
+          status: 'completed',
+          content: [],
+          summary:
+            item.deltas.length > 0 ? [{ type: 'summary_text', text: item.deltas.join('') }] : [],
+        },
+      });
+    }
+    responseEvents.push(
+      {
+        type: 'response.output_item.added',
+        sequence_number: sequenceNumber++,
+        output_index: 3,
+        item: {
+          type: 'message',
+          id: 'message-item',
+          status: 'in_progress',
+          role: 'assistant',
+          content: [],
+        },
+      },
+      {
+        type: 'response.output_text.delta',
+        sequence_number: sequenceNumber++,
+        item_id: 'message-item',
+        output_index: 3,
+        content_index: 0,
+        delta: 'answer',
+      },
+      {
+        type: 'response.output_item.done',
+        sequence_number: sequenceNumber++,
+        output_index: 3,
+        item: {
+          type: 'message',
+          id: 'message-item',
+          status: 'completed',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'answer', annotations: [] }],
+        },
+      },
+      {
+        type: 'response.completed',
+        sequence_number: sequenceNumber++,
+        response: {
+          id: 'r',
+          object: 'response',
+          created_at: 0,
+          model: 'qwen3.8-max',
+          status: 'completed',
+          output: [],
+          usage: { input_tokens: 1, output_tokens: 3, total_tokens: 4 },
+        },
+      },
+    );
+    const rawSse = `${responseEvents
+      .map((event) => `data: ${JSON.stringify(event)}`)
+      .join('\n\n')}\n\ndata: [DONE]\n\n`;
+    const fetch = (async () =>
+      new Response(rawSse, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })) as unknown as typeof globalThis.fetch;
     const firstBackend = createTestAiSdkBackend({
       sessionId: 'session-1',
       header: header(),
@@ -12473,7 +12520,7 @@ describe('AiSdkBackend thinking persistence', () => {
       connection: tokenPlanConnection,
       apiKey: 'alibaba-token',
       modelId: 'qwen3.8-max',
-      modelFactory: () => firstModel,
+      modelFactory: (input) => getAIModel({ ...input, fetch }),
       tools: [],
       newId: idGenerator(),
       now: monotonicClock(),
@@ -12509,12 +12556,31 @@ describe('AiSdkBackend thinking persistence', () => {
       turnId: 'turn-prev',
       now: () => 7,
       newId: idGenerator(),
-    } as unknown as InvocationContext;
+    } as unknown as RuntimeEventMapContext;
     const memory = createSessionEventMapMemory();
     const runtimeContext = firstEvents.map((event) =>
       mapSessionEventToRuntimeEvent(event, ctx, memory),
     );
-    const secondModel = completionModel();
+    let replayRequestBody: Record<string, unknown> | undefined;
+    const replayFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      replayRequestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      const completed = {
+        type: 'response.completed',
+        response: {
+          id: 'response-replay',
+          object: 'response',
+          created_at: 1,
+          model: 'qwen3.8-max',
+          status: 'completed',
+          output: [],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        },
+      };
+      return new Response(`data: ${JSON.stringify(completed)}\n\ndata: [DONE]\n\n`, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as unknown as typeof globalThis.fetch;
     const secondBackend = createTestAiSdkBackend({
       sessionId: 'session-1',
       header: header(),
@@ -12522,7 +12588,7 @@ describe('AiSdkBackend thinking persistence', () => {
       connection: tokenPlanConnection,
       apiKey: 'alibaba-token',
       modelId: 'qwen3.8-max',
-      modelFactory: () => secondModel,
+      modelFactory: (input) => getAIModel({ ...input, fetch: replayFetch }),
       tools: [],
       newId: idGenerator(),
       now: monotonicClock(),
@@ -12537,23 +12603,22 @@ describe('AiSdkBackend thinking persistence', () => {
       }),
     );
 
-    const prompt = compactPrompt(secondModel) as ModelMessage[];
-    const assistant = prompt.find(
-      (message) => message.role === 'assistant' && Array.isArray(message.content),
-    );
-    assert.ok(assistant && Array.isArray(assistant.content));
+    const replayInput = replayRequestBody?.input;
+    assert.ok(Array.isArray(replayInput));
     assert.deepEqual(
-      assistant.content
-        .filter((part) => part.type === 'reasoning')
-        .map((part) => [
-          part.text,
-          (part.providerOptions?.['alibaba-token-plan-cn'] as { itemId?: unknown } | undefined)
-            ?.itemId,
-        ]),
+      replayInput.filter((item) => item?.type === 'reasoning'),
       [
-        ['first summary', 'reasoning-item-1'],
-        ['second summary', 'reasoning-item-2'],
-        ['', 'reasoning-item-empty'],
+        {
+          type: 'reasoning',
+          id: 'reasoning-item-1',
+          summary: [{ type: 'summary_text', text: 'first summary' }],
+        },
+        {
+          type: 'reasoning',
+          id: 'reasoning-item-2',
+          summary: [{ type: 'summary_text', text: 'second summary' }],
+        },
+        { type: 'reasoning', id: 'reasoning-item-empty', summary: [] },
       ],
     );
   });
@@ -12573,30 +12638,41 @@ describe('AiSdkBackend thinking persistence', () => {
       process.off('unhandledRejection', trapUnhandledRejection);
     });
     const appended: AssistantMessage[] = [];
-    const model = new MockLanguageModelV4({
-      doStream: {
-        stream: simulateReadableStream({
-          chunks: [
-            { type: 'stream-start', warnings: [] },
-            { type: 'reasoning-start', id: 'reasoning-item' },
-            { type: 'reasoning-delta', id: 'reasoning-item', delta: 'streamed text' },
-            {
-              type: 'reasoning-end',
-              id: 'reasoning-item',
-              providerMetadata: {
-                'alibaba-token-plan-cn': {
-                  itemId: 'reasoning-item',
-                  reasoningSummary: [{ type: 'summary_text', text: 'different final summary' }],
-                  reasoningContent: null,
-                },
-              },
-            },
-          ] as LanguageModelV4StreamPart[],
-          initialDelayInMs: null,
-          chunkDelayInMs: null,
-        }),
+    const mismatchEvents = [
+      { type: 'response.created', response: { id: 'r' } },
+      {
+        type: 'response.output_item.added',
+        item: { type: 'reasoning', id: 'reasoning-item', summary: [] },
       },
-    });
+      {
+        type: 'response.reasoning_summary_text.delta',
+        item_id: 'reasoning-item',
+        summary_index: 0,
+        delta: 'streamed text',
+      },
+      {
+        type: 'response.reasoning_summary_text.done',
+        item_id: 'reasoning-item',
+        summary_index: 0,
+        text: 'streamed text',
+      },
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'reasoning',
+          id: 'reasoning-item',
+          summary: [{ type: 'summary_text', text: 'different final summary' }],
+        },
+      },
+    ];
+    const mismatchSse = `${mismatchEvents
+      .map((event) => `data: ${JSON.stringify(event)}`)
+      .join('\n\n')}\n\ndata: [DONE]\n\n`;
+    const mismatchFetch = (async () =>
+      new Response(mismatchSse, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })) as unknown as typeof globalThis.fetch;
     const backend = createTestAiSdkBackend({
       sessionId: 'session-1',
       header: header(),
@@ -12610,7 +12686,7 @@ describe('AiSdkBackend thinking persistence', () => {
       },
       apiKey: 'alibaba-token',
       modelId: 'qwen3.8-max',
-      modelFactory: () => model,
+      modelFactory: (input) => getAIModel({ ...input, fetch: mismatchFetch }),
       tools: [],
       newId: idGenerator(),
       now: monotonicClock(),
@@ -12635,7 +12711,7 @@ describe('AiSdkBackend thinking persistence', () => {
       turnId: 'turn-1',
       now: () => 7,
       newId: idGenerator(),
-    } as unknown as InvocationContext;
+    } as unknown as RuntimeEventMapContext;
     const memory = createSessionEventMapMemory();
     const runtimeContext = events.map((event) => mapSessionEventToRuntimeEvent(event, ctx, memory));
     const recoveryModel = completionModel();
@@ -12675,45 +12751,131 @@ describe('AiSdkBackend thinking persistence', () => {
     );
   });
 
+  test('Alibaba Responses preserves live compatibility reasoning across abrupt transport failure', async () => {
+    const partialEvents = [
+      { type: 'response.created', response: { id: 'r' } },
+      {
+        type: 'response.output_item.added',
+        item: { type: 'reasoning', id: 'reasoning-partial', summary: [] },
+      },
+      {
+        type: 'response.reasoning_text.delta',
+        item_id: 'reasoning-partial',
+        content_index: 0,
+        delta: 'partial compatibility reasoning',
+      },
+    ];
+    const bytes = new TextEncoder().encode(
+      `${partialEvents.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\n`,
+    );
+    const fetch = (async () => {
+      let emitted = false;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            if (!emitted) {
+              emitted = true;
+              controller.enqueue(bytes);
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            controller.error(new Error('transport boom'));
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as unknown as typeof globalThis.fetch;
+    const appended: AssistantMessage[] = [];
+    const backend = createTestAiSdkBackend({
+      sessionId: 'session-1',
+      header: header(),
+      appendMessage: async (message) => {
+        if (message.type === 'assistant') appended.push(message);
+      },
+      connection: {
+        slug: 'alibaba-token-plan-cn',
+        providerType: 'alibaba-token-plan-cn',
+        defaultModel: 'qwen3.8-max',
+      },
+      apiKey: 'alibaba-token',
+      modelId: 'qwen3.8-max',
+      modelFactory: (input) => getAIModel({ ...input, fetch }),
+      tools: [],
+      newId: idGenerator(),
+      now: monotonicClock(),
+    });
+
+    const events: SessionEvent[] = [];
+    for await (const event of backend.send({ turnId: 'turn-1', text: 'question', context: [] })) {
+      events.push(event);
+    }
+
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === 'thinking_delta' && event.text === 'partial compatibility reasoning',
+      ),
+      true,
+    );
+    assert.equal(events.find((event) => event.type === 'complete')?.stopReason, 'error');
+    assert.equal(JSON.stringify(appended).includes('makaResponses'), false);
+  });
+
   test('Alibaba Responses keeps a finalized item valid when the next item id is unsafe', async () => {
     const invalidItemId = 'invalid\nreasoning-item';
-    const model = new MockLanguageModelV4({
-      doStream: {
-        stream: simulateReadableStream({
-          chunks: [
-            { type: 'stream-start', warnings: [] },
-            { type: 'reasoning-start', id: 'reasoning-item-a' },
-            { type: 'reasoning-delta', id: 'reasoning-item-a', delta: 'valid summary' },
-            {
-              type: 'reasoning-end',
-              id: 'reasoning-item-a',
-              providerMetadata: {
-                'alibaba-token-plan-cn': {
-                  itemId: 'reasoning-item-a',
-                  reasoningSummary: [{ type: 'summary_text', text: 'valid summary' }],
-                  reasoningContent: null,
-                },
-              },
-            },
-            { type: 'reasoning-start', id: invalidItemId },
-            { type: 'reasoning-delta', id: invalidItemId, delta: 'unsafe item summary' },
-            {
-              type: 'reasoning-end',
-              id: invalidItemId,
-              providerMetadata: {
-                'alibaba-token-plan-cn': {
-                  itemId: invalidItemId,
-                  reasoningSummary: [{ type: 'summary_text', text: 'unsafe item summary' }],
-                  reasoningContent: null,
-                },
-              },
-            },
-          ] as LanguageModelV4StreamPart[],
-          initialDelayInMs: null,
-          chunkDelayInMs: null,
-        }),
+    const rawEvents = [
+      { type: 'response.created', response: { id: 'r' } },
+      {
+        type: 'response.output_item.added',
+        item: { type: 'reasoning', id: 'reasoning-item-a', summary: [] },
       },
-    });
+      {
+        type: 'response.reasoning_text.delta',
+        item_id: 'reasoning-item-a',
+        content_index: 0,
+        delta: 'valid summary',
+      },
+      {
+        type: 'response.reasoning_text.done',
+        item_id: 'reasoning-item-a',
+        content_index: 0,
+        text: 'valid summary',
+      },
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'reasoning',
+          id: 'reasoning-item-a',
+          summary: [{ type: 'summary_text', text: 'valid summary' }],
+        },
+      },
+      {
+        type: 'response.output_item.added',
+        item: { type: 'reasoning', id: invalidItemId, summary: [] },
+      },
+      {
+        type: 'response.reasoning_text.delta',
+        item_id: invalidItemId,
+        content_index: 0,
+        delta: 'unsafe item summary',
+      },
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'reasoning',
+          id: invalidItemId,
+          summary: [{ type: 'summary_text', text: 'unsafe item summary' }],
+        },
+      },
+    ];
+    const rawSse = `${rawEvents
+      .map((event) => `data: ${JSON.stringify(event)}`)
+      .join('\n\n')}\n\ndata: [DONE]\n\n`;
+    const fetch = (async () =>
+      new Response(rawSse, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })) as unknown as typeof globalThis.fetch;
     const appended: AssistantMessage[] = [];
     const connection = {
       slug: 'alibaba-token-plan-cn',
@@ -12729,7 +12891,7 @@ describe('AiSdkBackend thinking persistence', () => {
       connection,
       apiKey: 'alibaba-token',
       modelId: 'qwen3.8-max',
-      modelFactory: () => model,
+      modelFactory: (input) => getAIModel({ ...input, fetch }),
       tools: [],
       newId: idGenerator(),
       now: monotonicClock(),
@@ -12759,7 +12921,7 @@ describe('AiSdkBackend thinking persistence', () => {
       turnId: 'turn-1',
       now: () => 7,
       newId: idGenerator(),
-    } as unknown as InvocationContext;
+    } as unknown as RuntimeEventMapContext;
     const memory = createSessionEventMapMemory();
     const runtimeContext = events.map((event) => mapSessionEventToRuntimeEvent(event, ctx, memory));
     const recoveryModel = completionModel();
@@ -12808,39 +12970,59 @@ describe('AiSdkBackend thinking persistence', () => {
       providerType: 'alibaba-token-plan-cn',
       defaultModel: 'qwen3.8-max',
     } as const;
-    const model = new MockLanguageModelV4({
-      doStream: {
-        stream: simulateReadableStream({
-          chunks: [
-            { type: 'stream-start', warnings: [] },
-            { type: 'reasoning-start', id: 'reasoning-item-a' },
-            { type: 'reasoning-delta', id: 'reasoning-item-a', delta: 'valid summary' },
-            {
-              type: 'reasoning-end',
-              id: 'reasoning-item-a',
-              providerMetadata: {
-                'alibaba-token-plan-cn': {
-                  itemId: 'reasoning-item-a',
-                  reasoningSummary: [{ type: 'summary_text', text: 'valid summary' }],
-                  reasoningContent: null,
-                },
-              },
-            },
-            { type: 'reasoning-delta', id: 'reasoning-item-a', delta: 'late duplicate' },
-            {
-              type: 'finish',
-              finishReason: { unified: 'stop', raw: 'stop' },
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 2, text: 0, reasoning: 2 },
-              },
-            },
-          ] as LanguageModelV4StreamPart[],
-          initialDelayInMs: null,
-          chunkDelayInMs: null,
-        }),
+    const rawEvents = [
+      { type: 'response.created', response: { id: 'r' } },
+      {
+        type: 'response.output_item.added',
+        item: { type: 'reasoning', id: 'reasoning-item-a', summary: [] },
       },
-    });
+      {
+        type: 'response.reasoning_text.delta',
+        item_id: 'reasoning-item-a',
+        content_index: 0,
+        delta: 'valid summary',
+      },
+      {
+        type: 'response.reasoning_text.done',
+        item_id: 'reasoning-item-a',
+        content_index: 0,
+        text: 'valid summary',
+      },
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'reasoning',
+          id: 'reasoning-item-a',
+          summary: [{ type: 'summary_text', text: 'valid summary' }],
+        },
+      },
+      {
+        type: 'response.reasoning_text.delta',
+        item_id: 'reasoning-item-a',
+        content_index: 0,
+        delta: 'late duplicate',
+      },
+      {
+        type: 'response.completed',
+        response: {
+          id: 'r',
+          object: 'response',
+          created_at: 0,
+          model: 'qwen3.8-max',
+          status: 'completed',
+          output: [],
+          usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+        },
+      },
+    ];
+    const rawSse = `${rawEvents
+      .map((event) => `data: ${JSON.stringify(event)}`)
+      .join('\n\n')}\n\ndata: [DONE]\n\n`;
+    const fetch = (async () =>
+      new Response(rawSse, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })) as unknown as typeof globalThis.fetch;
     const appended: AssistantMessage[] = [];
     const firstBackend = createTestAiSdkBackend({
       sessionId: 'session-1',
@@ -12851,7 +13033,7 @@ describe('AiSdkBackend thinking persistence', () => {
       connection,
       apiKey: 'alibaba-token',
       modelId: 'qwen3.8-max',
-      modelFactory: () => model,
+      modelFactory: (input) => getAIModel({ ...input, fetch }),
       tools: [],
       newId: idGenerator(),
       now: monotonicClock(),
@@ -12883,7 +13065,7 @@ describe('AiSdkBackend thinking persistence', () => {
       turnId: 'turn-1',
       now: () => 7,
       newId: idGenerator(),
-    } as unknown as InvocationContext;
+    } as unknown as RuntimeEventMapContext;
     const memory = createSessionEventMapMemory();
     const runtimeContext = events.map((event) => mapSessionEventToRuntimeEvent(event, ctx, memory));
     const recoveryModel = completionModel();

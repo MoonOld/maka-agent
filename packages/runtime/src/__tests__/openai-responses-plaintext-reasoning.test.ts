@@ -134,6 +134,99 @@ function plaintextReasoningStream(
   return `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`;
 }
 
+/** Alibaba's published Responses reasoning-summary stream shape. */
+function officialSummaryReasoningStream(
+  deltas: string[],
+  answer = ANSWER,
+  finalSummary: Array<{ type: 'summary_text'; text: string }> = [
+    { type: 'summary_text', text: deltas.join('') },
+  ],
+): string {
+  const events: Array<Record<string, unknown>> = [
+    { type: 'response.created', sequence_number: 0, response: { id: 'r' } },
+    {
+      type: 'response.output_item.added',
+      sequence_number: 1,
+      output_index: 0,
+      item: { type: 'reasoning', id: ITEM_ID, status: 'in_progress', content: [], summary: [] },
+    },
+    ...deltas.map((delta, index) => ({
+      type: 'response.reasoning_summary_text.delta',
+      sequence_number: 2 + index,
+      item_id: ITEM_ID,
+      output_index: 0,
+      summary_index: 0,
+      delta,
+    })),
+    {
+      type: 'response.reasoning_summary_text.done',
+      sequence_number: 2 + deltas.length,
+      item_id: ITEM_ID,
+      output_index: 0,
+      summary_index: 0,
+      text: deltas.join(''),
+    },
+    {
+      type: 'response.output_item.done',
+      sequence_number: 3 + deltas.length,
+      output_index: 0,
+      item: {
+        type: 'reasoning',
+        id: ITEM_ID,
+        status: 'completed',
+        content: [],
+        summary: finalSummary,
+      },
+    },
+    {
+      type: 'response.output_item.added',
+      sequence_number: 4 + deltas.length,
+      output_index: 1,
+      item: {
+        type: 'message',
+        id: MESSAGE_ID,
+        status: 'in_progress',
+        role: 'assistant',
+        content: [],
+      },
+    },
+    {
+      type: 'response.output_text.delta',
+      sequence_number: 5 + deltas.length,
+      content_index: 0,
+      item_id: MESSAGE_ID,
+      output_index: 1,
+      delta: answer,
+    },
+    {
+      type: 'response.output_item.done',
+      sequence_number: 6 + deltas.length,
+      output_index: 1,
+      item: {
+        type: 'message',
+        id: MESSAGE_ID,
+        status: 'completed',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: answer, annotations: [] }],
+      },
+    },
+    {
+      type: 'response.completed',
+      sequence_number: 7 + deltas.length,
+      response: {
+        id: 'r',
+        object: 'response',
+        created_at: 0,
+        model: 'qwen3.8-max',
+        status: 'completed',
+        output: [],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    },
+  ];
+  return `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`;
+}
+
 function standardFunctionCallStream(): string {
   const item = {
     type: 'function_call',
@@ -203,8 +296,8 @@ function unfinalizedReasoningStream(terminal: 'completed' | 'failed'): string {
       item: { type: 'reasoning', id: ITEM_ID, status: 'in_progress', content: [], summary: [] },
     },
     {
-      type: 'response.reasoning_text.delta',
-      content_index: 0,
+      type: 'response.reasoning_summary_text.delta',
+      summary_index: 0,
       delta: 'unfinished reasoning',
       item_id: ITEM_ID,
       output_index: 0,
@@ -214,17 +307,22 @@ function unfinalizedReasoningStream(terminal: 'completed' | 'failed'): string {
   return `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`;
 }
 
-async function alibabaStreamParts(body: string) {
+async function alibabaStreamParts(
+  body: string,
+  chunkSize = Number.MAX_SAFE_INTEGER,
+  includeRawChunks = false,
+) {
   const connection = conn('alibaba-token-plan-cn');
   const model = getAIModel({
     connection,
     apiKey: 'test-key',
     modelId: 'qwen3.8-max',
-    fetch: sseFetch(body),
+    fetch: sseFetch(body, chunkSize),
   });
   const { stream } = await model.doStream({
     prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
     providerOptions: buildProviderOptions(connection, 'qwen3.8-max', 'high'),
+    includeRawChunks,
   });
   const parts = [];
   for await (const part of stream) parts.push(part);
@@ -280,7 +378,32 @@ async function streamParts(
 }
 
 describe('open responses plaintext reasoning', () => {
-  test('Alibaba raw SSE content deltas match the final summary metadata', async () => {
+  test('the pinned SDK exposes official summary events through raw byte chunks', async () => {
+    const deltas = ['检查请求。', '调用 Maka 工具。'];
+    const parts = await alibabaStreamParts(officialSummaryReasoningStream(deltas), 7, true);
+    const rawEventTypes = parts
+      .filter((part) => part.type === 'raw')
+      .map((part) => (part.rawValue as { type?: unknown }).type);
+    const reasoningEnd = parts.find((part) => part.type === 'reasoning-end');
+    assert.ok(reasoningEnd && reasoningEnd.type === 'reasoning-end');
+    const provider = reasoningEnd.providerMetadata?.['alibaba-token-plan-cn'] as
+      | { reasoningSummary?: Array<{ type: string; text: string }> }
+      | undefined;
+
+    assert.deepEqual(
+      rawEventTypes.filter((type) => type === 'response.reasoning_summary_text.delta'),
+      deltas.map(() => 'response.reasoning_summary_text.delta'),
+    );
+    assert.equal(
+      parts.some((part) => part.type === 'reasoning-delta'),
+      false,
+    );
+    assert.deepEqual(provider?.reasoningSummary, [
+      { type: 'summary_text', text: '检查请求。调用 Maka 工具。' },
+    ]);
+  });
+
+  test('Alibaba-compatible content deltas still match the final summary metadata', async () => {
     const deltas = ['Inspect the request. ', 'Call the Maka tool.'];
     const summary = [{ type: 'summary_text' as const, text: deltas.join('') }];
     const parts = await alibabaStreamParts(

@@ -23,8 +23,8 @@ const STATE_KEY = 'makaResponses';
 const STATE_VERSION = 1;
 const MAX_ITEM_ID_LENGTH = 512;
 const MAX_PROFILE_LENGTH = 128;
-const MAX_SUMMARY_PARTS = 128;
-const MAX_SUMMARY_TEXT_LENGTH = 10_000_000;
+export const PLAINTEXT_RESPONSES_MAX_SUMMARY_PARTS = 128;
+export const PLAINTEXT_RESPONSES_MAX_SUMMARY_TEXT_LENGTH = 10_000_000;
 
 export interface PlaintextResponsesReasoningState {
   readonly version: 1;
@@ -154,27 +154,27 @@ function isSafeStateVersion(value: unknown): value is number {
 }
 
 function isSafeSummaryParts(value: readonly string[] | undefined): value is readonly string[] {
-  if (!value || value.length > MAX_SUMMARY_PARTS) return false;
+  if (!value || value.length > PLAINTEXT_RESPONSES_MAX_SUMMARY_PARTS) return false;
   let total = 0;
   for (let index = 0; index < value.length; index += 1) {
     if (!Object.hasOwn(value, index)) return false;
     const part = value[index];
     if (typeof part !== 'string') return false;
     total += part.length;
-    if (total > MAX_SUMMARY_TEXT_LENGTH) return false;
+    if (total > PLAINTEXT_RESPONSES_MAX_SUMMARY_TEXT_LENGTH) return false;
   }
   return true;
 }
 
 function isSafeSummaryPartLengths(value: unknown): value is readonly number[] {
-  if (!Array.isArray(value) || value.length > MAX_SUMMARY_PARTS) return false;
+  if (!Array.isArray(value) || value.length > PLAINTEXT_RESPONSES_MAX_SUMMARY_PARTS) return false;
   let total = 0;
   for (let index = 0; index < value.length; index += 1) {
     if (!Object.hasOwn(value, index)) return false;
     const length = value[index];
     if (!Number.isSafeInteger(length) || length < 0) return false;
     total += length;
-    if (total > MAX_SUMMARY_TEXT_LENGTH) return false;
+    if (total > PLAINTEXT_RESPONSES_MAX_SUMMARY_TEXT_LENGTH) return false;
   }
   return true;
 }

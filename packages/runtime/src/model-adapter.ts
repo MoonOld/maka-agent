@@ -60,6 +60,7 @@ import {
   plaintextResponsesReasoningProviderOptions,
   safePlaintextResponsesReasoningItemId,
 } from './responses-reasoning-state.js';
+import { OpenResponsesReasoningStreamNormalizer } from './open-responses-reasoning-stream.js';
 import {
   classifyError,
   errorPresentationFromClass,
@@ -332,7 +333,10 @@ export class ModelAdapter {
       // Preserve the final request's Maka-owned message projection without
       // retaining the provider request body. ProviderRequestTracker owns body
       // capture; duplicating it here can retain large base64 image payloads.
-      include: { requestMessages: true },
+      include: {
+        requestMessages: true,
+        ...(usesAlibabaRawReasoningStream(this.runtime) ? { rawChunks: true } : {}),
+      },
       // With no continuation predicate, streamText performs one provider step.
       // Continuation belongs to the Runtime above this adapter.
       abortSignal: input.abortSignal,
@@ -372,6 +376,9 @@ export class ModelAdapter {
         : undefined;
     const openAiResponsesTransportState = this.openAiResponsesTransportState;
     const resolvedRuntime = this.runtime;
+    const rawReasoningNormalizer = usesAlibabaRawReasoningStream(resolvedRuntime)
+      ? new OpenResponsesReasoningStreamNormalizer()
+      : undefined;
     let settleOutcome!: (outcome: ModelStepOutcome) => void;
     const outcome = new Promise<ModelStepOutcome>((resolve) => {
       settleOutcome = resolve;
@@ -387,6 +394,13 @@ export class ModelAdapter {
         try {
           for await (const chunk of sdk.stream as AsyncIterable<AiSdkStreamChunk>) {
             onStreamActivity();
+            if (rawReasoningNormalizer && chunk.type === 'raw') {
+              const normalized = rawReasoningNormalizer.consume(chunk.rawValue);
+              if (normalized.unfinalizedTerminal) sawUnfinalizedPlaintextSummary = true;
+              for (const event of normalized.events) yield event;
+              continue;
+            }
+            if (rawReasoningNormalizer?.suppressMappedChunk(chunk.type)) continue;
             if (
               chunk.type === 'finish' ||
               chunk.type === 'finish-step' ||
@@ -417,6 +431,9 @@ export class ModelAdapter {
               }
               yield event;
             }
+          }
+          if (rawReasoningNormalizer?.hasUnfinalizedItems()) {
+            sawUnfinalizedPlaintextSummary = true;
           }
         } catch (error) {
           if (!failure) {
@@ -749,6 +766,15 @@ function requireResponsesReplayProfile(runtime: ResolvedModelRuntime): string {
   return runtime.responsesReplayProfile;
 }
 
+function usesAlibabaRawReasoningStream(runtime: ResolvedModelRuntime): boolean {
+  return (
+    runtime.reasoningReplay.kind === 'responses' &&
+    runtime.reasoningReplay.contract.adapter === 'open-responses' &&
+    runtime.reasoningReplay.contract.reasoningReplay === 'plaintext-summary' &&
+    runtime.reasoningReplay.contract.compatibility === 'alibaba-token-plan'
+  );
+}
+
 /**
  * Internal, adapter-only shape of an AI SDK `streamText` stream chunk. This
  * type never crosses the `ModelAdapter` boundary — `ModelAdapter.translateChunk`
@@ -757,6 +783,7 @@ function requireResponsesReplayProfile(runtime: ResolvedModelRuntime): string {
  */
 interface AiSdkStreamChunk {
   type: string;
+  rawValue?: unknown;
   text?: string;
   delta?: string;
   textDelta?: string;
