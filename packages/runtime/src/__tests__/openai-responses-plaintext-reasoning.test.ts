@@ -307,11 +307,7 @@ function unfinalizedReasoningStream(terminal: 'completed' | 'failed'): string {
   return `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`;
 }
 
-async function alibabaStreamParts(
-  body: string,
-  chunkSize = Number.MAX_SAFE_INTEGER,
-  includeRawChunks = false,
-) {
+async function alibabaStreamParts(body: string, chunkSize = Number.MAX_SAFE_INTEGER) {
   const connection = conn('alibaba-token-plan-cn');
   const model = getAIModel({
     connection,
@@ -322,7 +318,6 @@ async function alibabaStreamParts(
   const { stream } = await model.doStream({
     prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
     providerOptions: buildProviderOptions(connection, 'qwen3.8-max', 'high'),
-    includeRawChunks,
   });
   const parts = [];
   for await (const part of stream) parts.push(part);
@@ -378,26 +373,19 @@ async function streamParts(
 }
 
 describe('open responses plaintext reasoning', () => {
-  test('the pinned SDK exposes official summary events through raw byte chunks', async () => {
+  test('the pinned SDK maps official summary events across raw byte chunks', async () => {
     const deltas = ['检查请求。', '调用 Maka 工具。'];
-    const parts = await alibabaStreamParts(officialSummaryReasoningStream(deltas), 7, true);
-    const rawEventTypes = parts
-      .filter((part) => part.type === 'raw')
-      .map((part) => (part.rawValue as { type?: unknown }).type);
+    const parts = await alibabaStreamParts(officialSummaryReasoningStream(deltas), 7);
+    const streamed = parts
+      .filter((part) => part.type === 'reasoning-delta')
+      .map((part) => part.delta);
     const reasoningEnd = parts.find((part) => part.type === 'reasoning-end');
     assert.ok(reasoningEnd && reasoningEnd.type === 'reasoning-end');
     const provider = reasoningEnd.providerMetadata?.['alibaba-token-plan-cn'] as
       | { reasoningSummary?: Array<{ type: string; text: string }> }
       | undefined;
 
-    assert.deepEqual(
-      rawEventTypes.filter((type) => type === 'response.reasoning_summary_text.delta'),
-      deltas.map(() => 'response.reasoning_summary_text.delta'),
-    );
-    assert.equal(
-      parts.some((part) => part.type === 'reasoning-delta'),
-      false,
-    );
+    assert.deepEqual(streamed, deltas);
     assert.deepEqual(provider?.reasoningSummary, [
       { type: 'summary_text', text: '检查请求。调用 Maka 工具。' },
     ]);

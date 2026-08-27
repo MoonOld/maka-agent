@@ -56,10 +56,10 @@ interface RuntimeProviderProfile {
 
 const ALIBABA_TOKEN_PLAN_RESPONSES = {
   adapter: 'open-responses',
-  // Alibaba streams both the standard `reasoning_summary_text` carrier and a
-  // regional `reasoning_text` compatibility carrier. Runtime normalizes their
-  // raw events, while `output_item.done.item.summary` remains the durable
-  // identity and part-boundary authority.
+  // The pinned SDK maps both the standard `reasoning_summary_text` carrier and
+  // the regional `reasoning_text` compatibility carrier. Runtime retains
+  // `output_item.done.item.summary` as the durable identity and part-boundary
+  // authority.
   reasoningReplay: 'plaintext-summary',
   compatibility: 'alibaba-token-plan',
 } as const satisfies RuntimeProviderResponsesContract;
