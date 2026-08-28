@@ -729,7 +729,7 @@ function buildFamilyWire(
     // Connection-aware: a relay model's declared variants count too.
     const reasons = thinkingVariantsForConnection(connection, modelId).length > 0;
     if (reasoningReplay.contract.adapter === 'open-responses') {
-      // @ai-sdk/open-responses@2.0.28 passes a provider-native reasoningEffort
+      // @ai-sdk/open-responses@2.0.34 passes a provider-native reasoningEffort
       // through verbatim, ahead of the cross-provider top-level `reasoning`
       // enum that cannot express DeepSeek's `max` (whose documented mapping
       // sends `xhigh` to high, not max). The SDK resolves providerOptions

@@ -505,7 +505,7 @@ describe('open responses plaintext reasoning', () => {
         toolCallId: 'call_1',
         toolName: 'Read',
         input: '{\"path\":\"package.json\"}',
-        // 2.0.28 preserves the provider item identity used by ordered replay.
+        // 2.0.34 preserves the provider item identity used by ordered replay.
         providerMetadata: { deepseek: { itemId: 'fc_1' } },
       },
     );

@@ -176,7 +176,7 @@ export class ModelAdapter {
     return {
       toolCalls: true,
       toolResults: true,
-      // Verified against @ai-sdk/open-responses@2.0.28: replay now preserves
+      // Verified against @ai-sdk/open-responses@2.0.34: replay preserves
       // item order and IDs, but a provider-executed result embedded in the
       // assistant message (Maka's provider-tool chronology) is still dropped,
       // leaving a dangling function_call on the wire. Fail closed until the
