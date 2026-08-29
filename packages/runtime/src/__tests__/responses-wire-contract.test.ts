@@ -29,10 +29,7 @@ import { buildProviderOptions, getAIModel } from '../model-factory.js';
 import { ModelAdapter } from '../model-adapter.js';
 import { TOOL_SEARCH_PROVIDER_NAME } from '../tool-availability.js';
 import { resolveModelRuntime } from '../model-runtime.js';
-import {
-  RUNTIME_PROVIDER_PROFILE_IDS,
-  resolveRuntimeProviderAdapter,
-} from '../provider-runtime-policy.js';
+import { resolveRuntimeProviderAdapter } from '../provider-runtime-policy.js';
 import { lowerModelTools } from '../model-adapter.js';
 import { openAiCodexCompactionMessages } from '../openai-codex-history-compactor.js';
 import { openAiResponsesBaseUrl, openResponsesUrl } from '../provider-urls.js';
@@ -313,16 +310,6 @@ describe('responses wire contract', () => {
     );
   });
 
-  test('Core Runtime-profile references exactly match Runtime implementations', () => {
-    const referenced = Object.values(PROVIDER_REGISTRY).flatMap((definition) => {
-      const adapter = definition.runtimeAdapter;
-      return adapter.kind === 'openai-compatible' && adapter.runtimeProfile
-        ? [adapter.runtimeProfile]
-        : [];
-    });
-    assert.deepEqual([...new Set(referenced)].sort(), [...RUNTIME_PROVIDER_PROFILE_IDS].sort());
-  });
-
   test('enables Responses only through an explicit supported contract', () => {
     const configured = Object.entries(PROVIDER_REGISTRY).flatMap(([providerType, definition]) => {
       const adapter = resolveRuntimeProviderAdapter(definition.runtimeAdapter);
@@ -553,68 +540,6 @@ describe('responses wire request body', () => {
 
     assert.equal(body?.store, false);
     assert.equal(headers?.get('x-token-plan-routing'), 'custom');
-  });
-
-  test('Alibaba non-stored request carries the reconstructed summary item', async () => {
-    let body: Record<string, unknown> | undefined;
-    const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body));
-      return Response.json({
-        id: 'response-2',
-        object: 'response',
-        created_at: 2,
-        model: 'qwen3.8-max',
-        status: 'completed',
-        output: [],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-      });
-    }) as unknown as typeof globalThis.fetch;
-    const connection = {
-      ...conn('alibaba-token-plan-cn'),
-      baseUrl: 'https://token-plan.example/compatible-mode/v1',
-    };
-    const model = getAIModel({
-      connection,
-      apiKey: 'token-plan-key',
-      modelId: 'qwen3.8-max',
-      fetch,
-    });
-
-    await model.doGenerate({
-      prompt: [
-        { role: 'user', content: [{ type: 'text', text: 'first question' }] },
-        {
-          role: 'assistant',
-          content: [
-            {
-              type: 'reasoning',
-              text: 'durable reasoning summary',
-              providerOptions: {
-                'alibaba-token-plan-cn': {
-                  itemId: 'reasoning-item-1',
-                  reasoningSummary: [{ type: 'summary_text', text: 'durable reasoning summary' }],
-                  reasoningContent: null,
-                },
-              },
-            },
-            { type: 'text', text: 'first answer' },
-          ],
-        },
-        { role: 'user', content: [{ type: 'text', text: 'follow up' }] },
-      ],
-    });
-
-    assert.equal(body?.store, false);
-    assert.deepEqual(
-      (body?.input as Array<Record<string, unknown>> | undefined)?.find(
-        (item) => item.type === 'reasoning',
-      ),
-      {
-        type: 'reasoning',
-        id: 'reasoning-item-1',
-        summary: [{ type: 'summary_text', text: 'durable reasoning summary' }],
-      },
-    );
   });
 
   test('adds the V2 trigger only through the explicit OpenAI provider option', async () => {

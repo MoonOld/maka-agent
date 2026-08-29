@@ -181,15 +181,18 @@ export function getAIModel(input: ModelFactoryInput): LanguageModelV4 {
           throw new Error('Responses wire requires a Responses continuation contract');
         }
         if (reasoningReplay.contract.adapter === 'open-responses') {
+          const finalizeBody = createOpenResponsesCompatibilityFinalizer(
+            reasoningReplay.contract.compatibility,
+          );
           // Request customization is applied first; provider compatibility is
           // the final authority before network dispatch, so an overlay cannot
           // re-enable storage or violate the provider's tool-choice contract.
-          const responsesFetch = createRequestCustomizationFetch(baseFetch, {
-            ...requestCustomization,
-            finalizeBody: createOpenResponsesCompatibilityFinalizer(
-              reasoningReplay.contract.compatibility,
-            ),
-          });
+          const responsesFetch = finalizeBody
+            ? createRequestCustomizationFetch(baseFetch, {
+                ...requestCustomization,
+                finalizeBody,
+              })
+            : requestFetch;
           return createOpenResponses({
             name: runtimeProviderName(adapter, connection),
             apiKey,

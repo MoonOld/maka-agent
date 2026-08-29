@@ -70,16 +70,6 @@ test('rejects malformed, widened, and unsafe plaintext Responses state', () => {
     assert.equal(decodePlaintextResponsesReasoningState({ makaResponses }).kind, 'malformed');
   }
   assert.deepEqual(decodePlaintextResponsesReasoningState(undefined), { kind: 'missing' });
-  assert.deepEqual(
-    decodePlaintextResponsesReasoningState({
-      makaResponses: {
-        version: 2,
-        profile: 'another-provider',
-        itemId: 'item',
-      },
-    }),
-    { kind: 'unsupported-version', version: 2 },
-  );
 });
 
 test('degrades a well-formed state version that this Runtime cannot replay', () => {

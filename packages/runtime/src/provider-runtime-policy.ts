@@ -36,7 +36,7 @@ export type RuntimeProviderResponsesContract =
 
 type OpenAiCompatibleRuntimeAdapter = Omit<
   Extract<ProviderRuntimeAdapter, { kind: 'openai-compatible' }>,
-  'responses'
+  'responses' | 'runtimeProfile'
 > & {
   readonly responses?: RuntimeProviderResponsesContract;
 };
@@ -68,17 +68,14 @@ const RUNTIME_PROVIDER_PROFILES = {
   'alibaba-token-plan': { responses: ALIBABA_TOKEN_PLAN_RESPONSES },
 } as const satisfies Record<ProviderRuntimeProfileId, RuntimeProviderProfile>;
 
-export const RUNTIME_PROVIDER_PROFILE_IDS = Object.freeze(
-  Object.keys(RUNTIME_PROVIDER_PROFILES) as ProviderRuntimeProfileId[],
-);
-
 export function resolveRuntimeProviderAdapter(
   adapter: ProviderRuntimeAdapter,
 ): RuntimeProviderAdapter {
   if (adapter.kind !== 'openai-compatible' || adapter.runtimeProfile === undefined) {
     return adapter;
   }
-  return { ...adapter, responses: RUNTIME_PROVIDER_PROFILES[adapter.runtimeProfile].responses };
+  const { runtimeProfile, ...resolved } = adapter;
+  return { ...resolved, responses: RUNTIME_PROVIDER_PROFILES[runtimeProfile].responses };
 }
 
 /** Raw provider identity passed to open-responses and used as its provider-options key. */
