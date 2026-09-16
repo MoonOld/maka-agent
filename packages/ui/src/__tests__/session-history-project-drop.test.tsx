@@ -169,6 +169,14 @@ async function mountRail(groups: SessionRailData['groups'], rows: SessionSummary
       assert.ok(node, `no project row for ${projectId}`);
       return node;
     },
+    /** The browser fires this on every real drag; the list relies on it. */
+    endDrag: async (sessionId: string) => {
+      await act(() => {
+        document
+          .querySelector(`[data-session-id="${sessionId}"]`)
+          ?.dispatchEvent(dragEvent(window, 'dragend', transfer()));
+      });
+    },
     dispose: async () => {
       await act(() => root.unmount());
       Object.assign(globalThis, original);
@@ -197,6 +205,7 @@ test('dropping a task on a project row re-files it under that project', async ()
     });
 
     assert.deepEqual(rail.moves, [{ sessionId: 's1', projectId: 'pA' }]);
+    await rail.endDrag('s1');
   } finally {
     await rail.dispose();
   }
@@ -226,6 +235,7 @@ test('dropping a task on the ungrouped bucket clears its project', async () => {
     });
 
     assert.deepEqual(rail.moves, [{ sessionId: 's1', projectId: null }]);
+    await rail.endDrag('s1');
   } finally {
     await rail.dispose();
   }
@@ -245,12 +255,6 @@ test('a task can be dropped on a project that has no tasks yet', async () => {
     await act(() => {
       rail.sessionRow('s1').dispatchEvent(dragEvent(rail.window, 'dragstart', dragging));
     });
-    // An empty project has only its heading to aim at, so the row opens the
-    // space its first task will take while the drag is in the air.
-    assert.ok(
-      rail.document.querySelector('.maka-project-row-drop-zone'),
-      'no drop area opened for the empty project',
-    );
 
     await act(() => {
       rail.projectRow('pB').dispatchEvent(dragEvent(rail.window, 'dragover', dragging));
@@ -260,6 +264,7 @@ test('a task can be dropped on a project that has no tasks yet', async () => {
     });
 
     assert.deepEqual(rail.moves, [{ sessionId: 's1', projectId: 'pB' }]);
+    await rail.endDrag('s1');
   } finally {
     await rail.dispose();
   }

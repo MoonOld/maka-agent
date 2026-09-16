@@ -85,6 +85,16 @@ type SessionRowActionId = 'flag' | 'archive' | 'rename' | 'move';
  * Session id — the only thing the move needs.
  */
 const SESSION_DRAG_MIME = 'application/x-maka-session';
+
+/**
+ * The task currently in the air, or null.
+ *
+ * Module state rather than React state on purpose: setting state in `dragstart`
+ * re-renders the rail mid-gesture, and a re-render during a drag is how a
+ * Chromium drag gets dropped on the floor. At most one HTML5 drag exists per
+ * window, so one variable is the whole of it.
+ */
+let draggingSessionId: string | null = null;
 type ProjectRowActionId = 'new' | 'relink' | 'rename' | 'archive' | 'restore';
 type SessionHistoryGroupVariant = 'conversation' | 'project';
 
@@ -420,15 +430,6 @@ function SessionListGroups(props: {
   const workspaceCopy = getConversationCopy(locale).workspace;
   const [renameTarget, setRenameTarget] = useState<SessionRenameTarget | null>(null);
   /**
-   * Whether a task from this rail is in the air.
-   *
-   * Read by the project rows, which open a drop area for a project that has no
-   * children yet. It is a boolean rather than the dragged id: the id travels in
-   * `dataTransfer` and is read at the drop, and every project row needs only to
-   * know that a gesture is in progress.
-   */
-  const [dragActive, setDragActive] = useState(false);
-  /**
    * The control the rename was started from, so focus can go back to it.
    *
    * Astryx's Dialog restores focus on its own — to whatever was focused when it
@@ -522,7 +523,6 @@ function SessionListGroups(props: {
             ? undefined
             : rail.rowActions}
           onStartRename={startRename}
-          onDragActiveChange={setDragActive}
         />
       );
     },
@@ -567,7 +567,6 @@ function SessionListGroups(props: {
           sessions={sessions}
           streamingSessionIds={rail.streamingSessionIds}
           projectActions={rail.projectActions}
-          dragging={dragActive}
           onDropSession={
             rail.rowActions?.onMoveToProject
               ? (sessionId, projectId) => {
@@ -678,8 +677,6 @@ function ProjectNavRow(props: {
    * when the shell cannot move tasks, and the row is then not a drop target.
    */
   onDropSession?(sessionId: string, projectId: string | null): void;
-  /** True while a task from this rail is being dragged. */
-  dragging?: boolean;
   renderSession(session: SessionSummary): ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -710,14 +707,16 @@ function ProjectNavRow(props: {
       className="maka-project-row"
       data-drop-target={isDropTarget ? 'true' : undefined}
       onDragOver={(event) => {
-        // Only the shell's own task drags may land here. A file or text drag the
+        // Only a task drag from this rail may land here. A file or text drag the
         // OS hands the window must not turn a project row into a target just
-        // because a pointer happens to be over it. `dragging` is the list's own
-        // witness that one of its rows is in the air; the MIME type is the one
-        // that travels with the drag, and either is enough — the list is the
-        // authority on its own gestures.
+        // because a pointer happens to be over it. The module-level id is the
+        // primary witness — it cannot be missing while one of our own drags is
+        // in the air — and the MIME type is the fallback for a drag that began
+        // before this module knew about it.
         if (!props.onDropSession) return;
-        if (!props.dragging && !event.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
+        if (draggingSessionId === null && !event.dataTransfer.types.includes(SESSION_DRAG_MIME)) {
+          return;
+        }
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         setIsDropTarget(true);
@@ -762,14 +761,6 @@ function ProjectNavRow(props: {
           </VStack>
         ) : undefined}
       </SideNavItem>
-      {props.onDropSession && props.dragging && !hasSessions ? (
-        // An empty project is a heading with nothing under it, so the heading is
-        // the whole target and the eye aims past it into the next row. While a
-        // task is in the air, open the space its first child would take and let
-        // that space be part of the target. Decorative: the row already names
-        // itself, and a screen reader has nothing to do with a drop zone.
-        <div className="maka-project-row-drop-zone" aria-hidden="true" />
-      ) : null}
       <ProjectHoverCardDescription
         id={hoverDescriptionId}
         summary={hoverSummary}
@@ -830,8 +821,6 @@ const SessionNavRow = memo(function SessionNavRow(props: {
   onSelectSession(sessionId: string): void;
   actions?: SessionRowActions;
   onStartRename(target: SessionRenameTarget, opener: HTMLElement | null): void;
-  /** True while this row is being dragged, false when the gesture ends. */
-  onDragActiveChange?(active: boolean): void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hoverDescriptionId = useId();
@@ -894,16 +883,13 @@ const SessionNavRow = memo(function SessionNavRow(props: {
       onDragStart={
         canDrag
           ? (event) => {
+              draggingSessionId = props.session.id;
               event.dataTransfer.setData(SESSION_DRAG_MIME, props.session.id);
               event.dataTransfer.effectAllowed = 'move';
-              // The list is told too, so a project with no children can open a
-              // drop area while the drag is in the air. `dataTransfer` alone
-              // cannot say that: it is readable at the drop, not during it.
-              props.onDragActiveChange?.(true);
             }
           : undefined
       }
-      onDragEnd={canDrag ? () => props.onDragActiveChange?.(false) : undefined}
+      onDragEnd={canDrag ? () => { draggingSessionId = null; } : undefined}
       data-stale={props.stale ? 'true' : undefined}
       data-worktree={props.worktree ? 'true' : undefined}
       data-picked={props.picked ? 'true' : undefined}
