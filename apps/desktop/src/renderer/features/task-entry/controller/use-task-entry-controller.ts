@@ -81,7 +81,7 @@ export interface TaskEntryControllerSelectors {
 export interface TaskEntryControllerCommands {
   refresh(): Promise<void>;
   selectLocalProject(projectId: string): boolean;
-  addProject(): void;
+  addProject(name?: string): void;
   chooseProjectForProfile(profileId: string): Promise<void>;
   resolveWorkBoardTarget(item: WorkBoardItem): WorkBoardStartTargetResult;
   prepareWorkBoardDraft(target: TaskEntryTarget, draft: string): string | undefined;
@@ -525,9 +525,17 @@ export function useTaskEntryController(
     },
     [setProjectSelections, setSelectedProfileId],
   );
-  const addSelectedProject = useCallback(() => {
-    if (selectedHost) void addProjectForHost(selectedHost);
-  }, [addProjectForHost, selectedHost]);
+  const addSelectedProject = useCallback(
+    (name?: string) => {
+      // The workspace-readiness notice hands this straight to an onClick, so a
+      // MouseEvent can arrive where a name is expected. Only a real string is a
+      // name; anything else means "no name given".
+      if (selectedHost) {
+        void addProjectForHost(selectedHost, typeof name === 'string' ? name : undefined);
+      }
+    },
+    [addProjectForHost, selectedHost],
+  );
   const refreshCatalog = useCallback(async (): Promise<void> => {
     await refresh();
   }, [refresh]);

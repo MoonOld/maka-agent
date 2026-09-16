@@ -44,11 +44,13 @@ import {
   Pin,
   PinOff,
   Plug,
+  Plus,
   SquarePen,
 } from './icons.js';
 import { RelativeTime } from './relative-time.js';
 import { formatAbsoluteTimestamp } from '@maka/core/relative-time';
 import { Badge } from '@astryxdesign/core/Badge';
+import { Button } from '@astryxdesign/core';
 import { useHoverCard, type HoverCardReturn } from '@astryxdesign/core/HoverCard';
 import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import {
@@ -415,6 +417,7 @@ function SessionListGroups(props: {
   const rail = useSessionRailData();
   const locale = useUiLocale();
   const copy = getConversationCopy(locale).sessions;
+  const workspaceCopy = getConversationCopy(locale).workspace;
   const [renameTarget, setRenameTarget] = useState<SessionRenameTarget | null>(null);
   /**
    * The control the rename was started from, so focus can go back to it.
@@ -584,8 +587,27 @@ function SessionListGroups(props: {
             {pinnedGroup.sessions.map((session) => renderSessionRow(session))}
           </SideNavSection>
         )}
-        {(activeGroups.length > 0 || archivedGroups.length > 0) && (
-          <SideNavSection title={copy.projects} className="maka-session-group">
+        {(activeGroups.length > 0 || archivedGroups.length > 0 || rail.onNewProject !== undefined) && (
+          <SideNavSection
+            title={copy.projects}
+            className="maka-session-group"
+            endContent={
+              rail.onNewProject ? (
+                // The ＋ ChatGPT's sidebar puts on 项目. Always visible in the
+                // project view — including when the list is empty, which is
+                // exactly when someone needs it.
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  isIconOnly
+                  label={workspaceCopy.newProject}
+                  tooltip={workspaceCopy.newProject}
+                  icon={<Plus size={ICON_SIZE.control} aria-hidden="true" />}
+                  onClick={() => rail.onNewProject?.()}
+                />
+              ) : undefined
+            }
+          >
             {activeGroups.map((group) => renderProjectGroup(group))}
             {archivedGroups.length > 0 && (
               <SideNavItem

@@ -525,19 +525,6 @@
   min-width: 0;
 }
 
-/*
- * The project control and its neighbouring ＋.
- *
- * Inline so the pair keeps the toolbar's baseline, and shrinkable so a long
- * project name still gives way to the model chip beside it.
- */
-.maka-workspace-picker-row {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-0-5);
-  min-width: 0;
-}
-
 .maka-composer-workspace [role="menu"] {
   max-width: min(360px, calc(100vw - var(--space-6)));
   max-height: none;

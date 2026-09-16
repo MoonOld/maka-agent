@@ -59,6 +59,11 @@ export interface SessionRailData {
   rowActions?: SessionRowActions;
   projectActions?: ProjectRowActions;
   /**
+   * Create a project from the rail. Drawn as the ＋ on the Projects section
+   * heading, and absent when the shell has no host that can make one.
+   */
+  onNewProject?: () => void;
+  /**
    * Every project the shell knows, in catalog order. Read by the row menu's
    * "Move to project" submenu, which has to list projects that currently hold
    * no session — the ones `groups` cannot reach.

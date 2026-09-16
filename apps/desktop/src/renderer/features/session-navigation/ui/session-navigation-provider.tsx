@@ -59,6 +59,11 @@ export interface SessionNavigationChromeInput {
   onNew(): void;
   onExitWorkHub(): void;
   onSelectSession(sessionId: string): void;
+  /**
+   * Create a project from the rail's ＋. Absent when no host can make one, and
+   * the heading then carries no ＋ at all.
+   */
+  onNewProject?: () => void;
 }
 
 export interface SessionNavigationProviderProps extends SessionNavigationChromeInput {
@@ -178,6 +183,7 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       rowActions,
       projectActions,
       projects: props.projects,
+      onNewProject: props.onNewProject,
     }),
     [
       controller.layout.viewMode,
@@ -186,6 +192,7 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       controller.selectors.sessionProjectName,
       controller.selectors.worktreeSessionIds,
       props.onSelectSession,
+      props.onNewProject,
       props.projects,
       projectActions,
       props.rail,

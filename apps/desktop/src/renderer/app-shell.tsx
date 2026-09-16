@@ -56,6 +56,7 @@ import {
   type ToastErrorAction,
   type NavSelection,
   type ProjectRowActions,
+  NewProjectDialog,
   SessionListPanel,
   TitlebarSessionIdentity,
   type TurnFooterActionMeta,
@@ -377,6 +378,9 @@ function AppShellContent({
   // current feature-owned implementation below the shell.
   const { selectLocalProject, resolveWorkBoardTarget, prepareWorkBoardDraft } = taskEntry.commands;
   const currentNewTaskDraftKey = taskEntry.selectors.draftKey;
+  // The rail's ＋ opens the same naming dialog the workspace picker does; the
+  // dialog is owned here so its form never lands inside the composer's form.
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   // Staged files and quotes do NOT take the target-scoped key: they belong to
   // the composer the user is looking at, and an in-flight send needs an owner
   // that cannot move under it. See NEW_TASK_PENDING_KEY.
@@ -2399,6 +2403,11 @@ function AppShellContent({
                   onSelect: openWorkHub,
                 } : undefined}
                 projectActions={projectRowActions}
+                onNewProject={
+                  taskEntry.selectors.canAddProject
+                    ? () => setNewProjectOpen(true)
+                    : undefined
+                }
               >
                 {SESSION_RAIL}
               </SessionNavigationProvider>
@@ -2820,6 +2829,18 @@ function AppShellContent({
         }}
         onSelectedRuntimeHostProfileIdChange={setSettingsProfileId}
       />
+      {newProjectOpen ? (
+        <NewProjectDialog
+          onOpenChange={(open) => {
+            if (!open) setNewProjectOpen(false);
+          }}
+          onSubmit={(name) => {
+            // The same command the workspace picker and the readiness notice
+            // use; the name just rides along into `projects.add`.
+            taskEntry.commands.addProject(name);
+          }}
+        />
+      ) : null}
     </div>
     </SessionCollaboration.SessionTurnRequestInboxProvider>
     </ModuleHub.ModuleHubSkillCatalogRevisionBoundary>
