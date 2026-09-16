@@ -20,6 +20,7 @@
 import type { ProjectRecord } from '@maka/core/project';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Button } from '@astryxdesign/core';
 import { DropdownMenu, DropdownMenuItem } from '@astryxdesign/core/DropdownMenu';
 import { ICON_SIZE, AlertTriangle, Check, FolderOpen, Network, Plus, RefreshCcw, Settings, X } from './icons.js';
 import { useUiLocale } from './locale-context.js';
@@ -65,9 +66,19 @@ export function WorkspacePicker({ workspacePicker: picker }: {
   // before the directory step, not after it.
   const [newProjectGroupId, setNewProjectGroupId] = useState<string | null>(null);
   const newProjectGroup = picker.groups.find((group) => group.id === newProjectGroupId);
+  /**
+   * The host a bare 新建 would act on: the one the picker is showing, or — when
+   * that host cannot create projects — the first one that can. Without a host
+   * that can create, the ＋ is not drawn at all, which is also what keeps the
+   * first screen free of a control that would fail.
+   */
+  const addGroup =
+    picker.groups.find((group) => group.id === picker.selectedGroupId && group.onAdd) ??
+    picker.groups.find((group) => group.onAdd);
 
   return (
     <>
+    <span className="maka-workspace-picker-row">
     <DropdownMenu
       placement="above"
       hasChevron={false}
@@ -186,6 +197,23 @@ export function WorkspacePicker({ workspacePicker: picker }: {
         </div>
       ) : null}
     </DropdownMenu>
+    {addGroup ? (
+      // A project control and its ＋, the way the first screen reads at a
+      // glance: the button names the workspace you are in, the ＋ next to it
+      // makes a new one. Same dialog as the menu item below — this is the
+      // affordance, that is the list.
+      <Button
+        variant="ghost"
+        size="sm"
+        isIconOnly
+        label={copy.newProject}
+        tooltip={copy.newProject}
+        icon={<Plus size={ICON_SIZE.control} aria-hidden="true" />}
+        isDisabled={locked}
+        onClick={() => setNewProjectGroupId(addGroup.id)}
+      />
+    ) : null}
+    </span>
     {newProjectGroup ? (
       // Portalled out of the picker's subtree on purpose. Astryx's Dialog is a
       // native `<dialog>` that does NOT portal itself, and the composer renders
