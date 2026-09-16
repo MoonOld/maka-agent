@@ -19,6 +19,7 @@
 
 import type { ProjectRecord } from '@maka/core/project';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { DropdownMenu, DropdownMenuItem } from '@astryxdesign/core/DropdownMenu';
 import { ICON_SIZE, AlertTriangle, Check, FolderOpen, Network, Plus, RefreshCcw, Settings, X } from './icons.js';
 import { useUiLocale } from './locale-context.js';
@@ -186,12 +187,20 @@ export function WorkspacePicker({ workspacePicker: picker }: {
       ) : null}
     </DropdownMenu>
     {newProjectGroup ? (
-      <NewProjectDialog
-        onOpenChange={(open) => {
-          if (!open) setNewProjectGroupId(null);
-        }}
-        onSubmit={(name) => newProjectGroup.onAdd?.(name)}
-      />
+      // Portalled out of the picker's subtree on purpose. Astryx's Dialog is a
+      // native `<dialog>` that does NOT portal itself, and the composer renders
+      // this picker INSIDE its own `<form>`. A dialog mounted in place would put
+      // the New project form inside the composer form, where a submit can be
+      // taken for the composer's — the window then navigates to the dev URL.
+      createPortal(
+        <NewProjectDialog
+          onOpenChange={(open) => {
+            if (!open) setNewProjectGroupId(null);
+          }}
+          onSubmit={(name) => newProjectGroup.onAdd?.(name)}
+        />,
+        document.body,
+      )
     ) : null}
     </>
   );
