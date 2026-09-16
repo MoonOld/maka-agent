@@ -100,13 +100,19 @@ const EMPTY_CATALOG: TaskEntryCatalog = {
 
 type DirectoryHandoff = TaskEntryHostRef & {
   readonly name: string;
+  /** The name typed in the New project dialog, applied once a folder is picked. */
+  readonly projectName?: string;
 };
 
-function directoryHandoffForHost(host: ReadyTaskEntryHost): DirectoryHandoff {
+function directoryHandoffForHost(
+  host: ReadyTaskEntryHost,
+  projectName?: string,
+): DirectoryHandoff {
   return {
     profileId: host.profile.id,
     hostId: host.hostId,
     name: host.profile.name,
+    ...(projectName ? { projectName } : {}),
   };
 }
 
@@ -279,12 +285,12 @@ export function useTaskEntryController(
     }
   }, [copy.projectUpdateFailedFallback, copy.projectUpdateFailedTitle, locale, refresh, reportError]);
 
-  const addProjectForHost = useCallback(async (host: ReadyTaskEntryHost): Promise<void> => {
+  const addProjectForHost = useCallback(async (host: ReadyTaskEntryHost, name?: string): Promise<void> => {
     if (projectMutationPendingRef.current) return;
     if (host.capabilities.chooseHostDirectory) {
       directoryOpenerRef.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setDirectoryHost(directoryHandoffForHost(host));
+      setDirectoryHost(directoryHandoffForHost(host, name));
       return;
     }
     if (!host.capabilities.chooseClientDirectory) return;
@@ -293,10 +299,13 @@ export function useTaskEntryController(
     try {
       let result: TaskEntryProjectMutationResult;
       try {
-        result = await service.addProject({
-          profileId: host.profile.id,
-          hostId: host.hostId,
-        });
+        result = await service.addProject(
+          {
+            profileId: host.profile.id,
+            hostId: host.hostId,
+          },
+          name,
+        );
       } catch (cause) {
         reportError({
           title: copy.selectDirectoryFailedTitle,
@@ -359,7 +368,16 @@ export function useTaskEntryController(
     ) return;
     setDirectoryHost(undefined);
     setSelectedProfileId(host.profileId);
-    setProjectSelections((current) => new Map(current).set(host.profileId, project.id));
+    // Register names the project after the folder — the remote directory browser
+    // has no name field of its own — so the name typed before the folder was
+    // picked is applied here. A failed rename must not lose the project that was
+    // just created, so it falls back to the folder-derived name.
+    const named = host.projectName
+      ? await window.maka.projects
+          .rename(project.id, host.projectName, registeredHost)
+          .catch(() => project)
+      : project;
+    setProjectSelections((current) => new Map(current).set(host.profileId, named.id));
     await refreshAfterProjectMutation(host.profileId);
   }, [directoryHost, refreshAfterProjectMutation]);
 
@@ -444,7 +462,7 @@ export function useTaskEntryController(
           selectedProjectId: groupSelectedProjectId,
           onSelectProject: (projectId: string) => selectProject(host, projectId),
           ...(host.capabilities.chooseClientDirectory || host.capabilities.chooseHostDirectory
-            ? { onAdd: () => void addProjectForHost(host) }
+            ? { onAdd: (name: string) => void addProjectForHost(host, name) }
             : {}),
           ...(host.capabilities.chooseClientDirectory
             ? { onRelink: (projectId: string) => void relinkProject(host, projectId) }

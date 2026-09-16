@@ -1830,11 +1830,11 @@ const makaBridge = {
         for (const unsubscribe of unsubscribes) unsubscribe();
       };
     },
-    async addProject(host: DesktopNewTaskHostRef) {
+    async addProject(host: DesktopNewTaskHostRef, name?: string) {
       const result = await ipcRenderer.invoke(
         'projects:add',
         await runtimeHostScope(host),
-        { select: false },
+        { select: false, ...(name === undefined ? {} : { name }) },
       ) as
         | { ok: true; project: ProjectRecord; path: string }
         | { ok: false; reason: 'cancelled' };
@@ -2808,10 +2808,10 @@ const makaBridge = {
         if (runtimeHostMetadataFor(scope)?.profileKind === 'local') handler();
       });
     },
-    add(host?: DesktopRuntimeHostRef): Promise<
+    add(host?: DesktopRuntimeHostRef, options?: { name?: string }): Promise<
       { ok: true; project: ProjectRecord; path: string } | { ok: false; reason: 'cancelled' }
     > {
-      return invokeSelectedRuntimeHost(host, 'projects:add');
+      return invokeSelectedRuntimeHost(host, 'projects:add', options);
     },
     getDirectoryRoots(host: DesktopRuntimeHostRef) {
       return invokeSelectedRuntimeHost(host, 'projects:directoryRoots');
