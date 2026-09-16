@@ -222,6 +222,22 @@
 }
 
 /*
+ * The space an empty project opens for a task in the air.
+ *
+ * Only drawn while a task is being dragged, and only for a project that has no
+ * children — one with children already has a body to aim at. The inline inset
+ * matches the nest its first child will land in, so the target is where the
+ * task will actually go.
+ */
+.maka-project-row-drop-zone {
+  min-height: 32px;
+  margin: var(--space-0-5) var(--space-2) var(--space-1-5);
+  border: 1px dashed var(--accent-solid);
+  border-radius: var(--radius-control);
+  opacity: 0.6;
+}
+
+/*
  * Grouping switch (session-list-panel.tsx): the last row of the sticky top
  * region, above the scrolling history it governs.
  *
