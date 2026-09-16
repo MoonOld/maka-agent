@@ -27,6 +27,7 @@ import {
   Button,
   EmptyState,
   MoreMenu,
+  NewProjectDialog,
   TextInput,
   useMountedRef,
   useToast,
@@ -92,6 +93,7 @@ export function ProjectsSettingsPage(props: {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const directoryPickerTriggerRef = useRef<HTMLButtonElement>(null);
   const reloadGeneration = useRef(0);
 
@@ -104,6 +106,20 @@ export function ProjectsSettingsPage(props: {
       setCapabilities(snapshot.capabilities);
     }
   }, [host, mountedRef, props.runtimeHostTargetVerified]);
+
+  /**
+   * Create a project from the name the New project dialog collected. The add
+   * call still owns the folder picker, so a cancelled picker simply leaves the
+   * list unchanged; the name rides along and the project is registered under it.
+   */
+  const addNamedProject = useCallback(
+    async (name: string) => {
+      if (!host || !props.runtimeHostTargetVerified) return;
+      const result = await window.maka.projects.add(host, { name });
+      if (result.ok) await reload();
+    },
+    [host, props.runtimeHostTargetVerified, reload],
+  );
 
   useEffect(() => {
     if (!host || !props.runtimeHostTargetVerified) {
@@ -269,10 +285,10 @@ export function ProjectsSettingsPage(props: {
                 ? () => {
                     if (props.runtimeHostTargetVerified) setDirectoryPickerOpen(true);
                   }
-                : async () => {
-                    if (!props.runtimeHostTargetVerified) return;
-                    const result = await window.maka.projects.add(host);
-                    if (result.ok) await reload();
+                : () => {
+                    // The dialog names the project first; the folder picker it
+                    // opens is the same one, just reached one step later.
+                    if (props.runtimeHostTargetVerified) setNewProjectOpen(true);
                   }}
             />
           ) : undefined}
@@ -501,6 +517,16 @@ export function ProjectsSettingsPage(props: {
             void reload();
           }}
         />
+        {newProjectOpen && props.runtimeHostTargetVerified ? (
+          <NewProjectDialog
+            onOpenChange={(open) => {
+              if (!open) setNewProjectOpen(false);
+            }}
+            onSubmit={(name) => {
+              void addNamedProject(name);
+            }}
+          />
+        ) : null}
       </RuntimeHostInteractionBoundary>
     </SettingsPage>
   );

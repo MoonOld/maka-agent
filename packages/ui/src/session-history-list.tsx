@@ -73,6 +73,16 @@ import { getSessionHoverCardCopy } from './session-hover-card-copy.js';
 import { deriveTitlebarProjectName } from './titlebar-session-identity.js';
 
 type SessionRowActionId = 'flag' | 'archive' | 'rename' | 'move';
+
+/**
+ * The drag payload for "move this task to that project".
+ *
+ * A private MIME type rather than `text/plain`: only our own rows advertise it,
+ * so a project row can tell a task drag from a file or text the OS drags in,
+ * and a drop anywhere else in the window is not hijacked. The value is the
+ * Session id — the only thing the move needs.
+ */
+const SESSION_DRAG_MIME = 'application/x-maka-session';
 type ProjectRowActionId = 'new' | 'relink' | 'rename' | 'archive' | 'restore';
 type SessionHistoryGroupVariant = 'conversation' | 'project';
 
@@ -544,6 +554,13 @@ function SessionListGroups(props: {
           sessions={sessions}
           streamingSessionIds={rail.streamingSessionIds}
           projectActions={rail.projectActions}
+          onDropSession={
+            rail.rowActions?.onMoveToProject
+              ? (sessionId, projectId) => {
+                  void rail.rowActions?.onMoveToProject?.(sessionId, projectId);
+                }
+              : undefined
+          }
           onStartRename={(opener) => {
             if (project) {
               startRename({ kind: 'project', id: project.id, name: project.name }, opener);
@@ -622,6 +639,12 @@ function ProjectNavRow(props: {
   streamingSessionIds?: ReadonlySet<string>;
   projectActions?: ProjectRowActions;
   onStartRename(opener: HTMLElement | null): void;
+  /**
+   * Re-file a task dragged from the rail under this project. `null` for the
+   * ungrouped bucket, the one drop that means "leave every project". Absent
+   * when the shell cannot move tasks, and the row is then not a drop target.
+   */
+  onDropSession?(sessionId: string, projectId: string | null): void;
   renderSession(session: SessionSummary): ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -644,8 +667,32 @@ function ProjectNavRow(props: {
   const hasSessions = props.sessions.length > 0;
   const hasActions = props.project !== undefined && props.projectActions !== undefined;
   const hasMeta = (props.project !== undefined && !props.project.available) || hasActions;
+  const [isDropTarget, setIsDropTarget] = useState(false);
   return (
-    <div ref={containerRef} data-project-id={props.groupKey} className="maka-project-row">
+    <div
+      ref={containerRef}
+      data-project-id={props.groupKey}
+      className="maka-project-row"
+      data-drop-target={isDropTarget ? 'true' : undefined}
+      onDragOver={(event) => {
+        // Only the shell's own task drags may land here. A file or text drag the
+        // OS hands the window must not turn a project row into a target just
+        // because a pointer happens to be over it.
+        if (!props.onDropSession || !event.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setIsDropTarget(true);
+      }}
+      onDragLeave={() => setIsDropTarget(false)}
+      onDrop={(event) => {
+        setIsDropTarget(false);
+        if (!props.onDropSession) return;
+        const sessionId = event.dataTransfer.getData(SESSION_DRAG_MIME);
+        if (!sessionId) return;
+        event.preventDefault();
+        props.onDropSession(sessionId, props.project?.id ?? null);
+      }}
+    >
       <SideNavItem
         key="navigation"
         label={props.label}
@@ -782,12 +829,28 @@ const SessionNavRow = memo(function SessionNavRow(props: {
     .filter((entry): entry is string => Boolean(entry))
     .join(' · ');
 
+  // A row can be dragged onto a project to re-file it, but only when the shell
+  // offers that move and the row stands alone: with several rows picked, which
+  // one the pointer grabbed is not something the drag itself says, and moving
+  // the whole set is not what a drop on one project would mean.
+  const canDrag =
+    props.actions?.onMoveToProject !== undefined && !(props.picked && props.bulkCount > 1);
+
   return (
     <div
       ref={containerRef}
       className="maka-session-row"
       data-maka-contract="session-row"
       data-session-id={props.session.id}
+      draggable={canDrag ? true : undefined}
+      onDragStart={
+        canDrag
+          ? (event) => {
+              event.dataTransfer.setData(SESSION_DRAG_MIME, props.session.id);
+              event.dataTransfer.effectAllowed = 'move';
+            }
+          : undefined
+      }
       data-stale={props.stale ? 'true' : undefined}
       data-worktree={props.worktree ? 'true' : undefined}
       data-picked={props.picked ? 'true' : undefined}
