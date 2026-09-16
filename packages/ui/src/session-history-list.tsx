@@ -873,6 +873,19 @@ const SessionNavRow = memo(function SessionNavRow(props: {
   const canDrag =
     props.actions?.onMoveToProject !== undefined && !(props.picked && props.bulkCount > 1);
 
+  // Chromium does not start an HTML5 drag from a `<button>`, and every row here
+  // IS one — the pointer is on the button, so the wrapper's own `draggable` is
+  // never reached and the gesture degrades to dragging the button's selected
+  // text. Mark the button itself: the drag then begins on the element under the
+  // pointer, and `dragstart` bubbles to this row's handler from there.
+  useEffect(() => {
+    const button = containerRef.current?.querySelector('button.astryx-side-nav-item');
+    if (!button) return undefined;
+    if (!canDrag) return undefined;
+    button.setAttribute('draggable', 'true');
+    return () => button.removeAttribute('draggable');
+  }, [canDrag]);
+
   return (
     <div
       ref={containerRef}

@@ -270,6 +270,25 @@ test('a task can be dropped on a project that has no tasks yet', async () => {
   }
 });
 
+test('the row marks its own button as the drag source', async () => {
+  const sessions = [summary('s1')];
+  const rail = await mountRail(
+    [{ id: 'pA', label: 'Alpha', project: project('pA'), sessions }],
+    sessions,
+  );
+  try {
+    // Chromium will not start a drag from a button, and the row IS one, so the
+    // wrapper's `draggable` alone would never be reached.
+    const button = rail.document.querySelector(
+      '[data-session-id="s1"] button.astryx-side-nav-item',
+    );
+    assert.ok(button, 'no row button');
+    assert.equal(button.getAttribute('draggable'), 'true');
+  } finally {
+    await rail.dispose();
+  }
+});
+
 test('a drag that is not one of our tasks is refused', async () => {
   const sessions = [summary('s1')];
   const rail = await mountRail(
