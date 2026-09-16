@@ -19,6 +19,7 @@
 
 import { createContext, useContext, type ReactNode, type Ref } from 'react';
 import type { ScheduledTask } from '@maka/core/scheduled-task';
+import type { ProjectRecord } from '@maka/core/project';
 import type { SessionSummary } from '@maka/core/session';
 import type { SideNavImperativeCollapseHandle } from '@astryxdesign/core/SideNav';
 import type { NavModuleMemory, NavSelection } from './nav-selection.js';
@@ -57,6 +58,12 @@ export interface SessionRailData {
   onSelectSession(sessionId: string): void;
   rowActions?: SessionRowActions;
   projectActions?: ProjectRowActions;
+  /**
+   * Every project the shell knows, in catalog order. Read by the row menu's
+   * "Move to project" submenu, which has to list projects that currently hold
+   * no session — the ones `groups` cannot reach.
+   */
+  projects?: readonly ProjectRecord[];
 }
 
 /**

@@ -113,6 +113,9 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       onRename: (sessionId, name) => {
         void controller.commands.renameSession(sessionId, name);
       },
+      onMoveToProject: (sessionId, projectId) => {
+        void controller.commands.moveSessionToProject(sessionId, projectId);
+      },
       // No `onDelete`: the rail cannot delete. `deleteSession` is still a
       // command, reached from Settings › 已归档任务, where the task has already
       // been archived once.
@@ -174,6 +177,7 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       onSelectSession: props.onSelectSession,
       rowActions,
       projectActions,
+      projects: props.projects,
     }),
     [
       controller.layout.viewMode,
@@ -182,6 +186,7 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       controller.selectors.sessionProjectName,
       controller.selectors.worktreeSessionIds,
       props.onSelectSession,
+      props.projects,
       projectActions,
       props.rail,
       props.staleSessionIds,

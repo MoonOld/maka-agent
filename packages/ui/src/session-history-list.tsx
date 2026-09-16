@@ -72,7 +72,7 @@ import { getConversationCopy } from './conversation-copy.js';
 import { getSessionHoverCardCopy } from './session-hover-card-copy.js';
 import { deriveTitlebarProjectName } from './titlebar-session-identity.js';
 
-type SessionRowActionId = 'flag' | 'archive' | 'rename';
+type SessionRowActionId = 'flag' | 'archive' | 'rename' | 'move';
 type ProjectRowActionId = 'new' | 'relink' | 'rename' | 'archive' | 'restore';
 type SessionHistoryGroupVariant = 'conversation' | 'project';
 
@@ -121,6 +121,12 @@ export interface SessionRowActions {
   onArchive(sessionId: string): void | Promise<void>;
   onUnarchive(sessionId: string): void | Promise<void>;
   onRename(sessionId: string, name: string): void | Promise<void>;
+  /**
+   * Re-file ONE task under another project (`projectId`), or out of every
+   * project (`null`). Optional: a shell without project authority omits it and
+   * the row menu then hides the whole "Move to project" submenu.
+   */
+  onMoveToProject?(sessionId: string, projectId: string | null): void | Promise<void>;
 }
 
 export interface ProjectRowActions {
@@ -1264,6 +1270,7 @@ function SessionItemActions(props: {
   const mountedRef = useMountedRef();
   const pendingActionRef = useRef<SessionRowActionId | null>(null);
   const actions = props.actions;
+  const rail = useSessionRailData();
 
   useEffect(
     () => () => {
@@ -1271,6 +1278,39 @@ function SessionItemActions(props: {
     },
     [],
   );
+
+  // The row menu's "Move to project" flyout. Only projects that can actually
+  // receive a session are offered: the Host resolves a project target to its
+  // preferred directory and rejects an archived or directory-less one
+  // (`HostWorkspaceResolver`), so listing one would be a choice the user cannot
+  // take. The current project is left out — moving a task to where it already is
+  // is not a move — and when the task has no project there is nothing to remove
+  // it from, so only the projects remain.
+  const moveTargets = useMemo(() => {
+    const currentProjectId = props.session.projectId ?? null;
+    const projects = (rail.projects ?? [])
+      .filter(
+        (project) =>
+          project.available &&
+          project.archivedAt === undefined &&
+          project.id !== currentProjectId,
+      )
+      .map((project) => ({
+        label: project.name,
+        onClick: () =>
+          runRowAction('move', () => actions.onMoveToProject?.(props.session.id, project.id)),
+      }));
+    return currentProjectId === null
+      ? projects
+      : [
+          {
+            label: copy.moveToNoProject,
+            onClick: () =>
+              runRowAction('move', () => actions.onMoveToProject?.(props.session.id, null)),
+          },
+          ...projects,
+        ];
+  }, [actions, copy.moveToNoProject, props.session.id, props.session.projectId, rail.projects]);
 
   function runRowAction(actionId: SessionRowActionId, action: () => void | Promise<void>) {
     if (pendingActionRef.current) return;
@@ -1362,6 +1402,18 @@ function SessionItemActions(props: {
                         : actions.onArchive(props.session.id),
                     ),
                 },
+                // No submenu to build when the shell has no project authority or
+                // there is nowhere to move the task to. `moveTargets` already
+                // holds the projects plus, when the task has one, the exit.
+                ...(actions.onMoveToProject && moveTargets.length > 0
+                  ? [
+                      {
+                        label: copy.moveToProject,
+                        icon: FolderOpen,
+                        items: moveTargets,
+                      },
+                    ]
+                  : []),
               ]
         }
       />
