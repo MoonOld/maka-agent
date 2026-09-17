@@ -167,6 +167,8 @@ async function mountRail(groups: SessionRailData['groups'], rows: SessionSummary
     projectRow: (projectId: string) => {
       const node = document.querySelector(`[data-project-id="${projectId}"]`);
       assert.ok(node, `no project row for ${projectId}`);
+      // The BrowserWindow capture guard must let these drops reach React.
+      assert.equal(node.getAttribute('data-maka-session-drop-target'), 'true');
       return node;
     },
     /** The browser fires this on every real drag; the list relies on it. */

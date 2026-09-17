@@ -704,6 +704,7 @@ function ProjectNavRow(props: {
     <div
       ref={containerRef}
       data-project-id={props.groupKey}
+      data-maka-session-drop-target={props.onDropSession ? 'true' : undefined}
       className="maka-project-row"
       data-drop-target={isDropTarget ? 'true' : undefined}
       onDragOver={(event) => {
