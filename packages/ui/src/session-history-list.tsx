@@ -518,6 +518,7 @@ function SessionListGroups(props: {
           }
           meta={rail.sessionMeta?.(session)}
           sessionBadge={rail.sessionBadge}
+          projects={rail.projects}
           onSelectSession={rail.onSelectSession}
           actions={(session as SessionSummary & { readonly shared?: true }).shared
             ? undefined
@@ -819,6 +820,7 @@ const SessionNavRow = memo(function SessionNavRow(props: {
   projectName?: string;
   meta?: string;
   sessionBadge?: SessionRailData['sessionBadge'];
+  projects?: readonly ProjectRecord[];
   onSelectSession(sessionId: string): void;
   actions?: SessionRowActions;
   onStartRename(target: SessionRenameTarget, opener: HTMLElement | null): void;
@@ -1006,6 +1008,7 @@ const SessionNavRow = memo(function SessionNavRow(props: {
         <SessionItemActions
           session={props.session}
           actions={props.actions}
+          projects={props.projects}
           bulkCount={props.bulkCount}
           bulkAllPinned={props.bulkAllPinned}
           selectionCommands={props.selectionCommands}
@@ -1365,6 +1368,7 @@ function ProjectItemActions(props: {
 function SessionItemActions(props: {
   session: SessionSummary;
   actions: SessionRowActions;
+  projects?: readonly ProjectRecord[];
   bulkCount: number;
   bulkAllPinned: boolean;
   selectionCommands?: SessionRailSelectionCommands;
@@ -1386,7 +1390,9 @@ function SessionItemActions(props: {
   const mountedRef = useMountedRef();
   const pendingActionRef = useRef<SessionRowActionId | null>(null);
   const actions = props.actions;
-  const rail = useSessionRailData();
+  // A menu needs the project catalog, not activeId or the rest of the rail.
+  // Subscribing here to rail context bypasses the memoized row on every
+  // session switch and rewrites all of the menu triggers' anchor styles.
 
   useEffect(
     () => () => {
@@ -1404,7 +1410,7 @@ function SessionItemActions(props: {
   // it from, so only the projects remain.
   const moveTargets = useMemo(() => {
     const currentProjectId = props.session.projectId ?? null;
-    const projects = (rail.projects ?? [])
+    const projects = (props.projects ?? [])
       .filter(
         (project) =>
           project.available &&
@@ -1426,7 +1432,7 @@ function SessionItemActions(props: {
           },
           ...projects,
         ];
-  }, [actions, copy.moveToNoProject, props.session.id, props.session.projectId, rail.projects]);
+  }, [actions, copy.moveToNoProject, props.session.id, props.session.projectId, props.projects]);
 
   function runRowAction(actionId: SessionRowActionId, action: () => void | Promise<void>) {
     if (pendingActionRef.current) return;
