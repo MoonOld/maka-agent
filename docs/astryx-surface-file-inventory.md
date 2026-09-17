@@ -6,7 +6,7 @@ Generated against `@astryxdesign/core@0.6.1` (195 component exports).
 
 Wiki bar: Design Conventions · API Use-the-System · Theming · Container Padding.
 
-**Totals:** 285 files — blocker 0, reimplementation 0, polish 4, aligned 281.
+**Totals:** 284 files — blocker 0, reimplementation 0, polish 4, aligned 280.
 
 ## Exclusions (explicit)
 
@@ -130,7 +130,6 @@ Wiki bar: Design Conventions · API Use-the-System · Theming · Container Paddi
 | `apps/desktop/src/renderer/maka-tokens.css` | styles | n/a (css) | aligned — no off-rhythm control heights flagged | aligned |
 | `apps/desktop/src/renderer/mcp-brand-marks.tsx` | other | none | aligned — no raw controls; no Astryx JSX usage | aligned |
 | `apps/desktop/src/renderer/mcp-page.tsx` | module-hub | Banner, Button, Collapsible, Dialog, DialogHeader, Divider, EmptyState, HStack, Heading, IconButton, Layout, LayoutContent, List, ListItem, MetadataList, MetadataListItem, RadioList, RadioListItem, SegmentedControl, SegmentedControlItem, Selector, Skeleton, StackItem, StatusDot, Switch, Text, TextArea, TextInput, Toolbar, VStack | aligned — uses Astryx (Banner, Button, Collapsible, Dialog, DialogHeader, Divider, EmptyState, HStack) | aligned |
-| `apps/desktop/src/renderer/new-project-dialog-host.tsx` | dialog-overlay | none | aligned — no raw controls; no Astryx JSX usage | aligned |
 | `apps/desktop/src/renderer/onboarding-hero.tsx` | dialog-overlay | Banner, Button, Card, Center, Code, HStack, Heading, List, ListItem, Text, VStack | aligned — uses Astryx (Banner, Button, Card, Center, Code, HStack, Heading, List) | aligned |
 | `apps/desktop/src/renderer/plan-mode-panel.tsx` | shell-chrome-or-panel | Badge, Banner, Button, Collapsible | aligned — uses Astryx (Badge, Banner, Button, Collapsible) | aligned |
 | `apps/desktop/src/renderer/reference-shell.css` | styles | n/a (css) | aligned — no off-rhythm control heights flagged | aligned |

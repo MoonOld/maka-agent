@@ -92,8 +92,7 @@ export function ProjectsSettingsPage(props: {
   const [homePath, setHomePath] = useState<string | undefined>(undefined);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
-  const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [projectDialog, setProjectDialog] = useState<'directory' | 'new' | null>(null);
   const directoryPickerTriggerRef = useRef<HTMLButtonElement>(null);
   const reloadGeneration = useRef(0);
 
@@ -283,12 +282,12 @@ export function ProjectsSettingsPage(props: {
               label={copy.addProject}
               clickAction={capabilities.chooseHostDirectory
                 ? () => {
-                    if (props.runtimeHostTargetVerified) setDirectoryPickerOpen(true);
+                    if (props.runtimeHostTargetVerified) setProjectDialog('directory');
                   }
                 : () => {
                     // The dialog names the project first; the folder picker it
                     // opens is the same one, just reached one step later.
-                    if (props.runtimeHostTargetVerified) setNewProjectOpen(true);
+                    if (props.runtimeHostTargetVerified) setProjectDialog('new');
                   }}
             />
           ) : undefined}
@@ -509,18 +508,18 @@ export function ProjectsSettingsPage(props: {
         )}
         </SettingsSection>
         <RemoteProjectDirectoryDialog
-          host={directoryPickerOpen && props.runtimeHostTargetVerified ? host : undefined}
+          host={projectDialog === 'directory' && props.runtimeHostTargetVerified ? host : undefined}
           returnFocusTo={directoryPickerTriggerRef.current}
-          onClose={() => setDirectoryPickerOpen(false)}
+          onClose={() => setProjectDialog(null)}
           onRegistered={() => {
-            setDirectoryPickerOpen(false);
+            setProjectDialog(null);
             void reload();
           }}
         />
-        {newProjectOpen && props.runtimeHostTargetVerified ? (
+        {projectDialog === 'new' && props.runtimeHostTargetVerified ? (
           <NewProjectDialog
             onOpenChange={(open) => {
-              if (!open) setNewProjectOpen(false);
+              if (!open) setProjectDialog(null);
             }}
             onSubmit={(name) => {
               void addNamedProject(name);

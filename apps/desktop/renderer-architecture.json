@@ -97,7 +97,6 @@
     "src/renderer/model-catalog-choices.ts",
     "src/renderer/model-connection-errors.ts",
     "src/renderer/nav-selection.ts",
-    "src/renderer/new-project-dialog-host.tsx",
     "src/renderer/new-task-reload-intent.ts",
     "src/renderer/observable-state.ts",
     "src/renderer/onboarding-hero-copy.ts",
@@ -713,7 +712,7 @@
         "nonTriviaTokens": 1273
       },
       "src/renderer/app-shell.tsx": {
-        "importDeclarations": 65,
+        "importDeclarations": 64,
         "bridgePaths": {
           "window.maka.attachments": 1,
           "window.maka.attachments.readBytes": 1,
@@ -757,7 +756,7 @@
           "useNewTaskChoice": 1,
           "useOnboardingSnapshot": 1,
           "usePlanModeState": 1,
-          "useRef": 17,
+          "useRef": 16,
           "useSessionCollaborationDialog": 1,
           "useSessionEventHealthPolling": 1,
           "useSessionNavigationReads": 1,
@@ -824,7 +823,6 @@
           "./locales/shell-remaining-copy.js": 1,
           "./model-connection-errors": 1,
           "./nav-selection": 1,
-          "./new-project-dialog-host.js": 1,
           "./pending-items": 1,
           "./pending-session-view": 1,
           "./plan-mode-panel": 1,
@@ -863,8 +861,8 @@
           "@maka/ui": 1,
           "react": 1
         },
-        "importSpecifiers": 101,
-        "nonTriviaTokens": 13219
+        "importSpecifiers": 100,
+        "nonTriviaTokens": 13137
       },
       "src/renderer/use-app-shell-composer-quotes.ts": {
         "importDeclarations": 2,
@@ -1843,21 +1841,6 @@
         "actionFactories": [],
         "dependencyPaths": {
           "./browser-storage.js": 1
-        }
-      },
-      "src/renderer/new-project-dialog-host.tsx": {
-        "bridgePaths": {},
-        "environmentCapabilities": {},
-        "hookCalls": {
-          "useImperativeHandle": 1,
-          "useState": 1
-        },
-        "lifecycleMethods": {},
-        "unresolvedDependencies": 0,
-        "actionFactories": [],
-        "dependencyPaths": {
-          "@maka/ui": 1,
-          "react": 1
         }
       },
       "src/renderer/new-task-reload-intent.ts": {
@@ -2862,7 +2845,7 @@
           "useMountedRef": 1,
           "useOptionalRuntimeHostSettingsTarget": 1,
           "useRef": 2,
-          "useState": 7,
+          "useState": 6,
           "useToast": 1,
           "useUiLocale": 1
         },

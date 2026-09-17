@@ -82,6 +82,7 @@ export interface TaskEntryControllerCommands {
   refresh(): Promise<void>;
   selectLocalProject(projectId: string): boolean;
   addProject(name?: string): void;
+  openNewProject(): void;
   chooseProjectForProfile(profileId: string): Promise<void>;
   resolveWorkBoardTarget(item: WorkBoardItem): WorkBoardStartTargetResult;
   prepareWorkBoardDraft(target: TaskEntryTarget, draft: string): string | undefined;
@@ -152,6 +153,7 @@ export function useTaskEntryController(
   const [refreshing, setRefreshing] = useState(true);
   const [error, setError] = useState<string>();
   const [directoryHost, setDirectoryHost] = useState<DirectoryHandoff>();
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const directoryOpenerRef = useRef<HTMLElement | null>(null);
   const committedCatalogRef = useRef<TaskEntryCatalog>(EMPTY_CATALOG);
   const refreshRequestSequenceRef = useRef(0);
@@ -554,6 +556,12 @@ export function useTaskEntryController(
     [selectedHost],
   );
 
+  const openNewProject = useCallback(() => setNewProjectOpen(true), []);
+  const newProjectDialog = useMemo(() => newProjectOpen ? {
+    close: () => setNewProjectOpen(false),
+    submit: (name: string) => addSelectedProject(name),
+  } : undefined, [newProjectOpen, addSelectedProject]);
+
   return useMemo(() => ({
     host: {
       ...(directoryHost
@@ -565,6 +573,7 @@ export function useTaskEntryController(
             },
           }
         : {}),
+      newProjectDialog,
       directoryOpener: directoryOpenerRef.current,
       closeDirectoryPicker,
       acceptRegisteredProject,
@@ -573,6 +582,7 @@ export function useTaskEntryController(
       refresh: refreshCatalog,
       selectLocalProject,
       addProject: addSelectedProject,
+      openNewProject,
       chooseProjectForProfile,
       resolveWorkBoardTarget,
       prepareWorkBoardDraft,
@@ -596,6 +606,8 @@ export function useTaskEntryController(
   }), [
     acceptRegisteredProject,
     addSelectedProject,
+    newProjectDialog,
+    openNewProject,
     catalog.defaultProfileId,
     catalog.hosts.length,
     chooseProjectForProfile,

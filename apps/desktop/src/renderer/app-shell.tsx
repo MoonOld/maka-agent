@@ -64,10 +64,6 @@ import {
   deriveTitlebarProjectName,
   reconcileInteractions,
 } from '@maka/ui';
-import {
-  NewProjectDialogHost,
-  type NewProjectDialogHandle,
-} from './new-project-dialog-host.js';
 import type { ConnectionEvent } from '@maka/core/connections';
 import { ChatMessageSurface } from './chat-message-surface';
 import { useTaskSubmissionReadiness } from './use-task-submission-readiness';
@@ -369,10 +365,6 @@ function AppShellContent({
   // current feature-owned implementation below the shell.
   const { selectLocalProject, resolveWorkBoardTarget, prepareWorkBoardDraft } = taskEntry.commands;
   const currentNewTaskDraftKey = taskEntry.selectors.draftKey;
-  // The rail's ＋ opens the New project dialog. The dialog owns its own open
-  // state (see NewProjectDialogHost): a `useState` here would be one more hook
-  // scoped to the whole shell, which the shell's contract counts.
-  const newProjectDialogRef = useRef<NewProjectDialogHandle | null>(null);
   // Staged files and quotes do NOT take the target-scoped key: they belong to
   // the composer the user is looking at, and an in-flight send needs an owner
   // that cannot move under it. See NEW_TASK_PENDING_KEY.
@@ -2380,7 +2372,7 @@ function AppShellContent({
                 projectActions={projectRowActions}
                 onNewProject={
                   taskEntry.selectors.canAddProject
-                    ? () => newProjectDialogRef.current?.open()
+                    ? taskEntry.commands.openNewProject
                     : undefined
                 }
               >
@@ -2703,10 +2695,7 @@ function AppShellContent({
                 showOnboardingHero={showOnboardingHero}
                 onboardingState={onboardingState}
                 isOnboardingLoading={isOnboardingLoading}
-                onOpenSettings={(section) => {
-                  if (section) openSettingsSection(section);
-                  else openSettings();
-                }}
+                onOpenSettings={openSettingsSection}
                 onOpenConnectionDetail={openConnectionDetail}
                 onAddProvider={openProviderCreate}
                 onBrowseProviders={openProviderCatalog}
@@ -2793,14 +2782,6 @@ function AppShellContent({
           void taskEntry.commands.chooseProjectForProfile(profileId).catch(() => undefined);
         }}
         onSelectedRuntimeHostProfileIdChange={setSettingsProfileId}
-      />
-      <NewProjectDialogHost
-        ref={newProjectDialogRef}
-        onSubmit={(name) => {
-          // The same command the workspace picker and the readiness notice use;
-          // the name just rides along into `projects.add`.
-          taskEntry.commands.addProject(name);
-        }}
       />
     </div>
     </SessionCollaboration.SessionTurnRequestInboxProvider>
