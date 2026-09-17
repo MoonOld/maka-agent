@@ -101,6 +101,7 @@ apps/desktop/src/renderer/features/workhub/ui/workhub-work-identity.tsx
 apps/desktop/src/renderer/maka-tokens.css
 apps/desktop/src/renderer/mcp-brand-marks.tsx
 apps/desktop/src/renderer/mcp-page.tsx
+apps/desktop/src/renderer/new-project-dialog-host.tsx
 apps/desktop/src/renderer/onboarding-hero.tsx
 apps/desktop/src/renderer/plan-mode-panel.tsx
 apps/desktop/src/renderer/reference-shell.css
@@ -248,6 +249,7 @@ packages/ui/src/model-picker.tsx
 packages/ui/src/model-wheel-picker.tsx
 packages/ui/src/module-hub-selector.tsx
 packages/ui/src/module-pages.tsx
+packages/ui/src/new-project-dialog.tsx
 packages/ui/src/permission-mode-menu.tsx
 packages/ui/src/platform-shortcut-text.tsx
 packages/ui/src/primitives/chat.tsx

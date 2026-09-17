@@ -372,14 +372,15 @@ export function useTaskEntryController(
     // has no name field of its own — so the name typed before the folder was
     // picked is applied here. A failed rename must not lose the project that was
     // just created, so it falls back to the folder-derived name.
-    const named = host.projectName
-      ? await window.maka.projects
-          .rename(project.id, host.projectName, registeredHost)
-          .catch(() => project)
-      : project;
+    const renamed = host.projectName
+      ? await service
+          .renameProject(registeredHost, project.id, host.projectName)
+          .catch(() => undefined)
+      : undefined;
+    const named = renamed?.ok ? renamed.project : project;
     setProjectSelections((current) => new Map(current).set(host.profileId, named.id));
     await refreshAfterProjectMutation(host.profileId);
-  }, [directoryHost, refreshAfterProjectMutation]);
+  }, [directoryHost, refreshAfterProjectMutation, service]);
 
   const relinkProject = useCallback(async (
     host: ReadyTaskEntryHost,

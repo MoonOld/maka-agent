@@ -950,6 +950,11 @@ export interface MakaBridge {
     relinkProject(host: DesktopNewTaskHostRef, projectId: string): Promise<
       { ok: true; project: ProjectRecord } | { ok: false; reason: 'cancelled' }
     >;
+    renameProject(
+      host: DesktopNewTaskHostRef,
+      projectId: string,
+      name: string,
+    ): Promise<{ ok: true; project: ProjectRecord } | { ok: false; reason: 'cancelled' }>;
     getConnections(host: DesktopNewTaskHostRef): Promise<DesktopConnectionSnapshot>;
     listInvocableSkills(
       target: DesktopNewTaskTarget,

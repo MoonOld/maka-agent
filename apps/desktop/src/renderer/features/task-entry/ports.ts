@@ -98,6 +98,16 @@ export interface TaskEntryCatalogService {
     host: TaskEntryHostRef,
     projectId: string,
   ): Promise<TaskEntryProjectMutationResult>;
+  /**
+   * Name a project that was just registered. A remote Host's directory browser
+   * has no name field of its own, so the name typed before it opened is applied
+   * here, once the folder is known.
+   */
+  renameProject(
+    host: TaskEntryHostRef,
+    projectId: string,
+    name: string,
+  ): Promise<TaskEntryProjectMutationResult>;
 }
 
 export interface TaskEntryServices {

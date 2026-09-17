@@ -1847,6 +1847,17 @@ const makaBridge = {
         projectId,
       );
     },
+    async renameProject(host: DesktopNewTaskHostRef, projectId: string, name: string) {
+      return {
+        ok: true as const,
+        project: (await ipcRenderer.invoke(
+          'projects:rename',
+          await runtimeHostScope(host),
+          projectId,
+          name,
+        )) as ProjectRecord,
+      };
+    },
     async getConnections(host: DesktopNewTaskHostRef) {
       return ipcRenderer.invoke(
         'connections:getSnapshot',
