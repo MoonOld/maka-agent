@@ -19,6 +19,7 @@
 
 import type { RefObject } from 'react';
 import type { SessionSummary } from '@maka/core/session';
+import type { ProjectRecord } from '@maka/core/project';
 import type { RuntimeHostProfileKind } from '@maka/runtime-host/profile-kind';
 import type { DesktopSessionUpdateFailureCode } from '../../../shared/desktop-session-projection.js';
 
@@ -56,9 +57,22 @@ export type SessionNavigationToastApi = {
 };
 
 export interface SessionNavigationSession extends SessionSummary {
+  readonly runtimeHostId: string;
   readonly profileId: string;
   readonly profileName: string;
   readonly profileKind: RuntimeHostProfileKind;
+}
+
+export interface SessionNavigationProjectScope {
+  readonly key: string;
+  readonly profileId: string;
+  readonly hostId: string;
+  readonly profileName: string;
+  readonly profileKind: RuntimeHostProfileKind;
+  readonly project: ProjectRecord;
+  readonly capabilities: {
+    readonly chooseClientDirectory: boolean;
+  };
 }
 
 /** The minimum catalog mutation capability needed by Session Navigation. */

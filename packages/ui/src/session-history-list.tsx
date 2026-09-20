@@ -63,6 +63,7 @@ import { describeBlockedReason, presentSessionStatus } from './session-status-pr
 import { dotForStatus } from './status-vocabulary.js';
 import { SessionRenameDialog, type SessionRenameTarget } from './session-rename-dialog.js';
 import {
+  type SessionMoveTarget,
   type SessionRailData,
   useSessionRailData,
   useSessionRailSelection,
@@ -85,6 +86,9 @@ type SessionRowActionId = 'flag' | 'archive' | 'rename' | 'move';
  * Session id — the only thing the move needs.
  */
 const SESSION_DRAG_MIME = 'application/x-maka-session';
+
+/** One identity for "no destinations", so rows without any do not churn. */
+const EMPTY_MOVE_TARGETS: readonly SessionMoveTarget[] = [];
 
 /**
  * The task currently in the air, or null.
@@ -164,13 +168,6 @@ export interface SessionHistoryGroup {
   label: string;
   sessions: SessionSummary[];
   project?: ProjectRecord;
-  /**
-   * What this group is, when it is the rail's own grouping rather than a
-   * caller's. Only `project` and `ungrouped` are drop targets: a group that is
-   * merely "these rows share a Runtime Host" has no project to drop into, and
-   * treating its rows as targets would read a drop as "leave every project".
-   */
-  kind?: 'project' | 'ungrouped' | 'host';
 }
 
 /**
@@ -396,7 +393,6 @@ export function SessionHistoryList() {
             label: g.label,
             sessions: g.sessions,
             project: g.project,
-            kind: g.kind,
           }))
         : groupSessionsForHistory(rail.sessions, locale).map((g) => ({
             key: g.id,
@@ -430,7 +426,6 @@ function SessionListGroups(props: {
     label: string;
     sessions: SessionSummary[];
     project?: ProjectRecord;
-    kind?: 'project' | 'ungrouped' | 'host';
   }>;
 }) {
   const rail = useSessionRailData();
@@ -457,6 +452,13 @@ function SessionListGroups(props: {
   // would redraw for a switch that changed two of them (#4109). This component
   // is one fiber; the rows below it are ~1,000.
   const selection = useSessionRailSelection();
+  const projectActionsWithoutRelink = useMemo<
+    ProjectRowActions | undefined
+  >(() => {
+    if (!rail.projectActions) return undefined;
+    const { onRelink: _onRelink, ...actions } = rail.projectActions;
+    return actions;
+  }, [rail.projectActions]);
   const selectedIds = selection?.selectedIds;
   const pickedCount = selectedIds?.size ?? 0;
   // Whether a set-wide pin should read 置顶 or 取消置顶. Every row already
@@ -534,8 +536,8 @@ function SessionListGroups(props: {
           }
           meta={rail.sessionMeta?.(session)}
           sessionBadge={rail.sessionBadge}
-          projects={rail.projects}
-          canMoveToProject={rail.canMoveSessionToProject?.(session) ?? true}
+          canMoveToProject={(rail.moveTargets?.(session.id)?.length ?? 0) > 0}
+          moveTargets={rail.moveTargets?.(session.id) ?? EMPTY_MOVE_TARGETS}
           onSelectSession={rail.onSelectSession}
           actions={(session as SessionSummary & { readonly shared?: true }).shared
             ? undefined
@@ -567,18 +569,19 @@ function SessionListGroups(props: {
     function renderProjectGroup(group: (typeof props.groups)[number]): ReactNode {
       const project = group.project;
       const sessions = group.sessions.filter((session) => !session.isFlagged);
-      // Only a group that means a project may receive a task: a project row the
-      // menu would offer, or the ungrouped bucket, whose one drop clears the
-      // association. A Runtime Host group means neither — `project` is absent
-      // there, and a drop read as `null` would silently clear a project — and an
-      // unavailable or archived project is a target the Host would refuse after
-      // the user had already aimed at it.
-      const acceptsSessionDrop =
-        group.kind === 'ungrouped' ||
-        (group.kind === 'project' &&
-          project !== undefined &&
-          project.available &&
-          project.archivedAt === undefined);
+      const actions =
+        project &&
+        (rail.relinkableProjectIds === undefined ||
+          rail.relinkableProjectIds.has(project.id))
+          ? rail.projectActions
+          : projectActionsWithoutRelink;
+      // A row may receive a task only where the shell says one can land. This
+      // half of that question has to be answered before any drag exists — the
+      // window's drop guard reads the marker it sets — so it is the static half;
+      // which task may land here is answered per drag, below.
+      const canDrop =
+        (rail.moveDropGroupKeys?.has(group.key) ?? false) &&
+        rail.rowActions?.onMoveToProject !== undefined;
       return (
         <ProjectNavRow
           key={group.key}
@@ -587,12 +590,20 @@ function SessionListGroups(props: {
           project={project}
           sessions={sessions}
           streamingSessionIds={rail.streamingSessionIds}
-          projectActions={rail.projectActions}
+          projectActions={actions}
           onDropSession={
-            acceptsSessionDrop && rail.rowActions?.onMoveToProject
+            canDrop
               ? (sessionId, projectId) => {
                   void rail.rowActions?.onMoveToProject?.(sessionId, projectId);
                 }
+              : undefined
+          }
+          moveTargetForSession={
+            canDrop
+              ? (sessionId) =>
+                  rail
+                    .moveTargets?.(sessionId)
+                    .find((target) => target.groupKey === group.key)
               : undefined
           }
           onStartRename={(opener) => {
@@ -698,6 +709,12 @@ function ProjectNavRow(props: {
    * when the shell cannot move tasks, and the row is then not a drop target.
    */
   onDropSession?(sessionId: string, projectId: string | null): void;
+  /**
+   * Where this Session may be moved *on this row*, or undefined when this row
+   * is not one of its destinations. `onDropSession` says the row can receive a
+   * task at all; this says whether it can receive *this* one.
+   */
+  moveTargetForSession?(sessionId: string): SessionMoveTarget | undefined;
   renderSession(session: SessionSummary): ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -729,16 +746,12 @@ function ProjectNavRow(props: {
       className="maka-project-row"
       data-drop-target={isDropTarget ? 'true' : undefined}
       onDragOver={(event) => {
-        // Only a task drag from this rail may land here. A file or text drag the
-        // OS hands the window must not turn a project row into a target just
-        // because a pointer happens to be over it. The module-level id is the
-        // primary witness — it cannot be missing while one of our own drags is
-        // in the air — and the MIME type is the fallback for a drag that began
-        // before this module knew about it.
-        if (!props.onDropSession) return;
-        if (draggingSessionId === null && !event.dataTransfer.types.includes(SESSION_DRAG_MIME)) {
-          return;
-        }
+        // A drag only lands where the shell says this Session may go, so a row
+        // that is a potential target for nobody is not one for this drag either.
+        // The module-level id is what says which task is in the air; the MIME
+        // type is the fallback for a drag that began before this module knew.
+        if (!props.moveTargetForSession || draggingSessionId === null) return;
+        if (!props.moveTargetForSession(draggingSessionId)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         setIsDropTarget(true);
@@ -746,11 +759,11 @@ function ProjectNavRow(props: {
       onDragLeave={() => setIsDropTarget(false)}
       onDrop={(event) => {
         setIsDropTarget(false);
-        if (!props.onDropSession) return;
-        const sessionId = event.dataTransfer.getData(SESSION_DRAG_MIME);
-        if (!sessionId) return;
+        if (!props.moveTargetForSession || draggingSessionId === null) return;
+        const target = props.moveTargetForSession(draggingSessionId);
+        if (!target) return;
         event.preventDefault();
-        props.onDropSession(sessionId, props.project?.id ?? null);
+        props.onDropSession?.(draggingSessionId, target.projectId);
       }}
     >
       <SideNavItem
@@ -840,9 +853,10 @@ const SessionNavRow = memo(function SessionNavRow(props: {
   projectName?: string;
   meta?: string;
   sessionBadge?: SessionRailData['sessionBadge'];
-  projects?: readonly ProjectRecord[];
-  /** Whether this Session's projects are the ones `projects` holds. */
+  /** Whether this Session has anywhere to be moved to. */
   canMoveToProject: boolean;
+  /** The same answer, for the menu that offers them. */
+  moveTargets: readonly SessionMoveTarget[];
   onSelectSession(sessionId: string): void;
   actions?: SessionRowActions;
   onStartRename(target: SessionRenameTarget, opener: HTMLElement | null): void;
@@ -1032,8 +1046,8 @@ const SessionNavRow = memo(function SessionNavRow(props: {
         <SessionItemActions
           session={props.session}
           actions={props.actions}
-          projects={props.projects}
           canMoveToProject={props.canMoveToProject}
+          moveTargets={props.moveTargets}
           bulkCount={props.bulkCount}
           bulkAllPinned={props.bulkAllPinned}
           selectionCommands={props.selectionCommands}
@@ -1393,8 +1407,8 @@ function ProjectItemActions(props: {
 function SessionItemActions(props: {
   session: SessionSummary;
   actions: SessionRowActions;
-  projects?: readonly ProjectRecord[];
   canMoveToProject: boolean;
+  moveTargets: readonly SessionMoveTarget[];
   bulkCount: number;
   bulkAllPinned: boolean;
   selectionCommands?: SessionRailSelectionCommands;
@@ -1427,38 +1441,21 @@ function SessionItemActions(props: {
     [],
   );
 
-  // The row menu's "Move to project" flyout. Only projects that can actually
-  // receive a session are offered: the Host resolves a project target to its
-  // preferred directory and rejects an archived or directory-less one
-  // (`HostWorkspaceResolver`), so listing one would be a choice the user cannot
-  // take. The current project is left out — moving a task to where it already is
-  // is not a move — and when the task has no project there is nothing to remove
-  // it from, so only the projects remain.
+  // Where this task may go, asked of the shell rather than derived here: the
+  // rail holds no project list beyond the rows it draws, and one Host's
+  // projects are not another's. The row that leaves every project is offered
+  // only while the task is in one.
   const moveTargets = useMemo(() => {
     const currentProjectId = props.session.projectId ?? null;
-    const projects = (props.projects ?? [])
-      .filter(
-        (project) =>
-          project.available &&
-          project.archivedAt === undefined &&
-          project.id !== currentProjectId,
-      )
-      .map((project) => ({
-        label: project.name,
+    return props.moveTargets
+      .filter((target) => target.projectId !== currentProjectId)
+      .filter((target) => target.projectId !== null || currentProjectId !== null)
+      .map((target) => ({
+        label: target.projectId === null ? copy.moveToNoProject : (target.name ?? ''),
         onClick: () =>
-          runRowAction('move', () => actions.onMoveToProject?.(props.session.id, project.id)),
+          runRowAction('move', () => actions.onMoveToProject?.(props.session.id, target.projectId)),
       }));
-    return currentProjectId === null
-      ? projects
-      : [
-          {
-            label: copy.moveToNoProject,
-            onClick: () =>
-              runRowAction('move', () => actions.onMoveToProject?.(props.session.id, null)),
-          },
-          ...projects,
-        ];
-  }, [actions, copy.moveToNoProject, props.session.id, props.session.projectId, props.projects]);
+  }, [actions, copy.moveToNoProject, props.moveTargets, props.session.id, props.session.projectId]);
 
   function runRowAction(actionId: SessionRowActionId, action: () => void | Promise<void>) {
     if (pendingActionRef.current) return;

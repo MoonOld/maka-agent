@@ -34,6 +34,7 @@ export type {
   SessionHistoryGroup,
   SessionRowActions,
 } from './session-history-list.js';
+export type { SessionMoveTarget } from './session-rail-context.js';
 export * from './session-status-presentation.js';
 export * from './composer-helpers.js';
 export * from './conversation-copy.js';
