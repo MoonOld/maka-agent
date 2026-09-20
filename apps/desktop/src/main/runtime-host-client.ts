@@ -1091,25 +1091,27 @@ export class DesktopRuntimeHostClient {
   }
 
   /**
-   * Re-point an existing Session at another workspace.
+   * Re-point an existing Session at another workspace, at the revision the
+   * caller read.
    *
-   * The Host resolves a project target to that project's preferred directory
-   * (`HostWorkspaceResolver`), so a `project` target both re-files the Session
-   * and moves its cwd; a `host_path` target keeps or sets a directory while
-   * detaching the Session from every project. It is the desktop counterpart of
-   * the CLI `/move` (#1101).
+   * Deliberately a single attempt. The target can carry a working directory the
+   * caller read from that same revision — a `host_path` taken from the Session
+   * while detaching it from every project — and retrying against a fresher one
+   * would commit that stale directory under the new revision, undoing whatever
+   * the concurrent write did. A conflict is the answer, not a replay.
    */
-  relocateSessionWorkspace(
+  async relocateSessionWorkspace(
     sessionId: string,
+    expectedRevision: number,
     workspace: WorkspaceTarget,
   ): Promise<SessionCatalogProjection> {
-    return this.#updateSession(sessionId, (current) =>
-      this.request("session.workspace.relocate", {
-        sessionId,
-        expectedRevision: current.revision,
-        workspace,
-      }),
-    );
+    const result = await this.request("session.workspace.relocate", {
+      sessionId,
+      expectedRevision,
+      workspace,
+    });
+    if (result.kind === "committed") return requireSessionProjection(result.session);
+    throw revisionConflict("relocate", sessionId);
   }
 
   async setSessionReadMarker(
