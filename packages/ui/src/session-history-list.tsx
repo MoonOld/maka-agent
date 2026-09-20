@@ -164,6 +164,13 @@ export interface SessionHistoryGroup {
   label: string;
   sessions: SessionSummary[];
   project?: ProjectRecord;
+  /**
+   * What this group is, when it is the rail's own grouping rather than a
+   * caller's. Only `project` and `ungrouped` are drop targets: a group that is
+   * merely "these rows share a Runtime Host" has no project to drop into, and
+   * treating its rows as targets would read a drop as "leave every project".
+   */
+  kind?: 'project' | 'ungrouped' | 'host';
 }
 
 /**
@@ -389,6 +396,7 @@ export function SessionHistoryList() {
             label: g.label,
             sessions: g.sessions,
             project: g.project,
+            kind: g.kind,
           }))
         : groupSessionsForHistory(rail.sessions, locale).map((g) => ({
             key: g.id,
@@ -422,6 +430,7 @@ function SessionListGroups(props: {
     label: string;
     sessions: SessionSummary[];
     project?: ProjectRecord;
+    kind?: 'project' | 'ungrouped' | 'host';
   }>;
 }) {
   const rail = useSessionRailData();
@@ -526,6 +535,7 @@ function SessionListGroups(props: {
           meta={rail.sessionMeta?.(session)}
           sessionBadge={rail.sessionBadge}
           projects={rail.projects}
+          canMoveToProject={rail.canMoveSessionToProject?.(session) ?? true}
           onSelectSession={rail.onSelectSession}
           actions={(session as SessionSummary & { readonly shared?: true }).shared
             ? undefined
@@ -557,6 +567,18 @@ function SessionListGroups(props: {
     function renderProjectGroup(group: (typeof props.groups)[number]): ReactNode {
       const project = group.project;
       const sessions = group.sessions.filter((session) => !session.isFlagged);
+      // Only a group that means a project may receive a task: a project row the
+      // menu would offer, or the ungrouped bucket, whose one drop clears the
+      // association. A Runtime Host group means neither — `project` is absent
+      // there, and a drop read as `null` would silently clear a project — and an
+      // unavailable or archived project is a target the Host would refuse after
+      // the user had already aimed at it.
+      const acceptsSessionDrop =
+        group.kind === 'ungrouped' ||
+        (group.kind === 'project' &&
+          project !== undefined &&
+          project.available &&
+          project.archivedAt === undefined);
       return (
         <ProjectNavRow
           key={group.key}
@@ -567,7 +589,7 @@ function SessionListGroups(props: {
           streamingSessionIds={rail.streamingSessionIds}
           projectActions={rail.projectActions}
           onDropSession={
-            rail.rowActions?.onMoveToProject
+            acceptsSessionDrop && rail.rowActions?.onMoveToProject
               ? (sessionId, projectId) => {
                   void rail.rowActions?.onMoveToProject?.(sessionId, projectId);
                 }
@@ -819,6 +841,8 @@ const SessionNavRow = memo(function SessionNavRow(props: {
   meta?: string;
   sessionBadge?: SessionRailData['sessionBadge'];
   projects?: readonly ProjectRecord[];
+  /** Whether this Session's projects are the ones `projects` holds. */
+  canMoveToProject: boolean;
   onSelectSession(sessionId: string): void;
   actions?: SessionRowActions;
   onStartRename(target: SessionRenameTarget, opener: HTMLElement | null): void;
@@ -872,7 +896,9 @@ const SessionNavRow = memo(function SessionNavRow(props: {
   // one the pointer grabbed is not something the drag itself says, and moving
   // the whole set is not what a drop on one project would mean.
   const canDrag =
-    props.actions?.onMoveToProject !== undefined && !(props.picked && props.bulkCount > 1);
+    props.actions?.onMoveToProject !== undefined &&
+    props.canMoveToProject &&
+    !(props.picked && props.bulkCount > 1);
 
   // Chromium does not start an HTML5 drag from a `<button>`, and every row here
   // IS one — the pointer is on the button, so the wrapper's own `draggable` is
@@ -1007,6 +1033,7 @@ const SessionNavRow = memo(function SessionNavRow(props: {
           session={props.session}
           actions={props.actions}
           projects={props.projects}
+          canMoveToProject={props.canMoveToProject}
           bulkCount={props.bulkCount}
           bulkAllPinned={props.bulkAllPinned}
           selectionCommands={props.selectionCommands}
@@ -1367,6 +1394,7 @@ function SessionItemActions(props: {
   session: SessionSummary;
   actions: SessionRowActions;
   projects?: readonly ProjectRecord[];
+  canMoveToProject: boolean;
   bulkCount: number;
   bulkAllPinned: boolean;
   selectionCommands?: SessionRailSelectionCommands;
@@ -1525,7 +1553,7 @@ function SessionItemActions(props: {
                 // No submenu to build when the shell has no project authority or
                 // there is nowhere to move the task to. `moveTargets` already
                 // holds the projects plus, when the task has one, the exit.
-                ...(actions.onMoveToProject && moveTargets.length > 0
+                ...(actions.onMoveToProject && props.canMoveToProject && moveTargets.length > 0
                   ? [
                       {
                         label: copy.moveToProject,

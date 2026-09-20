@@ -79,13 +79,14 @@ function summary(id: string, overrides: Partial<SessionSummary> = {}): SessionSu
   };
 }
 
-function project(id: string): ProjectRecord {
+function project(id: string, overrides: Partial<ProjectRecord> = {}): ProjectRecord {
   return {
     id,
     name: id,
     locations: [{ path: `/${id}`, isWorktree: false }],
     available: true,
     preferredPath: `/${id}`,
+    ...overrides,
   };
 }
 
@@ -113,7 +114,11 @@ function dragEvent(
   return event;
 }
 
-async function mountRail(groups: SessionRailData['groups'], rows: SessionSummary[]) {
+async function mountRail(
+  groups: SessionRailData['groups'],
+  rows: SessionSummary[],
+  options: { canMove?: (session: SessionSummary) => boolean } = {},
+) {
   const original = { document: globalThis.document, window: globalThis.window };
   const { document, window } = parseHTML('<div id="root"></div>');
   installDomStubs(window);
@@ -140,6 +145,7 @@ async function mountRail(groups: SessionRailData['groups'], rows: SessionSummary
     onSelectSession: () => undefined,
     rowActions,
     projects: [project('pA'), project('pB')],
+    ...(options.canMove ? { canMoveSessionToProject: options.canMove } : {}),
   };
 
   const container = document.querySelector('#root');
@@ -171,6 +177,12 @@ async function mountRail(groups: SessionRailData['groups'], rows: SessionSummary
       assert.equal(node.getAttribute('data-maka-session-drop-target'), 'true');
       return node;
     },
+    /** The same row, for the cases where it must NOT be a drop target. */
+    projectRowNode: (projectId: string) => {
+      const node = document.querySelector(`[data-project-id="${projectId}"]`);
+      assert.ok(node, `no project row for ${projectId}`);
+      return node;
+    },
     /** The browser fires this on every real drag; the list relies on it. */
     endDrag: async (sessionId: string) => {
       await act(() => {
@@ -189,7 +201,7 @@ async function mountRail(groups: SessionRailData['groups'], rows: SessionSummary
 test('dropping a task on a project row re-files it under that project', async () => {
   const sessions = [summary('s1')];
   const rail = await mountRail(
-    [{ id: 'pA', label: 'Alpha', project: project('pA'), sessions }],
+    [{ id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions }],
     sessions,
   );
   try {
@@ -217,8 +229,8 @@ test('dropping a task on the ungrouped bucket clears its project', async () => {
   const sessions = [summary('s1', { projectId: 'pA' })];
   const rail = await mountRail(
     [
-      { id: 'pA', label: 'Alpha', project: project('pA'), sessions },
-      { id: '__ungrouped__', label: 'No project', sessions: [] },
+      { id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions },
+      { id: '__ungrouped__', label: 'No project', sessions: [], kind: 'ungrouped' },
     ],
     sessions,
   );
@@ -247,8 +259,8 @@ test('a task can be dropped on a project that has no tasks yet', async () => {
   const sessions = [summary('s1')];
   const rail = await mountRail(
     [
-      { id: 'pA', label: 'Alpha', project: project('pA'), sessions },
-      { id: 'pB', label: 'Beta', project: project('pB'), sessions: [] },
+      { id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions },
+      { id: 'pB', label: 'Beta', project: project('pB'), kind: 'project', sessions: [] },
     ],
     sessions,
   );
@@ -275,7 +287,7 @@ test('a task can be dropped on a project that has no tasks yet', async () => {
 test('the row marks its own button as the drag source', async () => {
   const sessions = [summary('s1')];
   const rail = await mountRail(
-    [{ id: 'pA', label: 'Alpha', project: project('pA'), sessions }],
+    [{ id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions }],
     sessions,
   );
   try {
@@ -294,7 +306,7 @@ test('the row marks its own button as the drag source', async () => {
 test('a drag that is not one of our tasks is refused', async () => {
   const sessions = [summary('s1')];
   const rail = await mountRail(
-    [{ id: 'pA', label: 'Alpha', project: project('pA'), sessions }],
+    [{ id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions }],
     sessions,
   );
   try {
@@ -308,6 +320,108 @@ test('a drag that is not one of our tasks is refused', async () => {
     });
 
     assert.deepEqual(rail.moves, []);
+  } finally {
+    await rail.dispose();
+  }
+});
+
+test('a Runtime Host group is a heading, not a drop target', async () => {
+  const sessions = [summary('s1')];
+  const rail = await mountRail(
+    [
+      { id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions },
+      { id: 'runtime-host:remote', label: 'Remote', kind: 'host', sessions: [] },
+    ],
+    sessions,
+  );
+  try {
+    const dragging = transfer();
+    await act(() => {
+      rail.sessionRow('s1').dispatchEvent(dragEvent(rail.window, 'dragstart', dragging));
+    });
+    // The window's capture guard only lets a session drop through on a row that
+    // marks itself a target, so a heading must not carry the marker either.
+    assert.equal(
+      rail.projectRowNode('runtime-host:remote').getAttribute('data-maka-session-drop-target'),
+      null,
+    );
+    await act(() => {
+      rail
+        .projectRowNode('runtime-host:remote')
+        .dispatchEvent(dragEvent(rail.window, 'dragover', dragging));
+    });
+    await act(() => {
+      rail
+        .projectRowNode('runtime-host:remote')
+        .dispatchEvent(dragEvent(rail.window, 'drop', dragging));
+    });
+
+    // A drop here would read `projectId = null`, i.e. "leave every project" —
+    // not what aiming at another Host's heading means.
+    assert.deepEqual(rail.moves, []);
+    await rail.endDrag('s1');
+  } finally {
+    await rail.dispose();
+  }
+});
+
+test('a project the Host would refuse is not a drop target', async () => {
+  const sessions = [summary('s1')];
+  const rail = await mountRail(
+    [
+      { id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions },
+      {
+        id: 'pB',
+        label: 'Beta',
+        project: project('pB', { available: false }),
+        kind: 'project',
+        sessions: [],
+      },
+    ],
+    sessions,
+  );
+  try {
+    const dragging = transfer();
+    await act(() => {
+      rail.sessionRow('s1').dispatchEvent(dragEvent(rail.window, 'dragstart', dragging));
+    });
+    assert.equal(
+      rail.projectRowNode('pB').getAttribute('data-maka-session-drop-target'),
+      null,
+    );
+    await act(() => {
+      rail.projectRowNode('pB').dispatchEvent(dragEvent(rail.window, 'dragover', dragging));
+    });
+    await act(() => {
+      rail.projectRowNode('pB').dispatchEvent(dragEvent(rail.window, 'drop', dragging));
+    });
+
+    // The row menu already filters this project out; the drop has to agree, or
+    // the user is shown a target the Host will reject.
+    assert.deepEqual(rail.moves, []);
+    await rail.endDrag('s1');
+  } finally {
+    await rail.dispose();
+  }
+});
+
+test('a session on another Runtime Host offers no move affordance', async () => {
+  const sessions = [summary('s1')];
+  const rail = await mountRail(
+    [{ id: 'pA', label: 'Alpha', project: project('pA'), kind: 'project', sessions }],
+    sessions,
+    { canMove: () => false },
+  );
+  try {
+    // Not draggable — at the row, and at the button the pointer lands on.
+    assert.equal(rail.sessionRow('s1').getAttribute('draggable'), null);
+    assert.equal(
+      rail
+        .sessionRow('s1')
+        .querySelector('button.astryx-side-nav-item')
+        ?.getAttribute('draggable'),
+      null,
+    );
   } finally {
     await rail.dispose();
   }

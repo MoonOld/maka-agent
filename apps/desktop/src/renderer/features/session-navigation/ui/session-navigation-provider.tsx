@@ -18,6 +18,7 @@
  */
 
 import {
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -25,7 +26,9 @@ import {
   type ReactNode,
 } from 'react';
 import type { ProjectRecord } from '@maka/core/project';
+import type { SessionSummary } from '@maka/core/session';
 import type { ScheduledTask } from '@maka/core/scheduled-task';
+import { runtimeHostProfileUsesHostWorkspace } from '@maka/runtime-host/profile-kind';
 import {
   SessionRailProvider,
   type NavModuleMemory,
@@ -128,6 +131,25 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
     [controller.commands],
   );
 
+  // The rail holds one project list — the local Host's. A Session that runs on
+  // another Runtime Host has its own, so the move affordances follow the Session
+  // rather than the list: offering a remote Session the local projects would
+  // name folders its Host has never heard of, and re-filing it into one would
+  // ask that Host for a project it does not have.
+  const movableSessionIds = useMemo(
+    () =>
+      new Set(
+        props.rail.sessions
+          .filter((session) => !runtimeHostProfileUsesHostWorkspace(session.profileKind))
+          .map((session) => session.id),
+      ),
+    [props.rail.sessions],
+  );
+  const canMoveSessionToProject = useCallback(
+    (session: SessionSummary) => movableSessionIds.has(session.id),
+    [movableSessionIds],
+  );
+
   // Project row mutations are commands too, and they arrive from a different
   // feature entirely. Read through a ref for the same reason as the ports: what
   // the rail needs is that they can be CALLED, and their identity says nothing
@@ -183,6 +205,7 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       rowActions,
       projectActions,
       projects: props.projects,
+      canMoveSessionToProject,
       onNewProject: props.onNewProject,
     }),
     [
@@ -191,6 +214,7 @@ export function SessionNavigationProvider(props: SessionNavigationProviderProps)
       controller.selectors.sessionMeta,
       controller.selectors.sessionProjectName,
       controller.selectors.worktreeSessionIds,
+      canMoveSessionToProject,
       props.onSelectSession,
       props.onNewProject,
       props.projects,

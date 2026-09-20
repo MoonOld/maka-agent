@@ -53,6 +53,10 @@ export function deriveSessionNavigationGroups(
       id: `runtime-host:${id}`,
       label: group.label,
       sessions: group.sessions,
+      // Sessions here run on another Runtime Host, so their projects are that
+      // Host's — not the list this rail holds. The group is a heading, never a
+      // drop target.
+      kind: 'host' as const,
     })),
   ];
 }

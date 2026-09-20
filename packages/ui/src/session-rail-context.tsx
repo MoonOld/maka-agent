@@ -59,6 +59,16 @@ export interface SessionRailData {
   rowActions?: SessionRowActions;
   projectActions?: ProjectRowActions;
   /**
+   * Whether this Session's projects are the ones the rail is showing.
+   *
+   * The rail holds one project list — the local Host's — and a Session that
+   * runs on another Runtime Host has its own. Offering that Session the local
+   * list would name projects its Host has never heard of, so the shell answers
+   * this per Session and the move affordances follow it. Absent means the rail
+   * cannot tell, and every Session keeps them.
+   */
+  canMoveSessionToProject?(session: SessionSummary): boolean;
+  /**
    * Create a project from the rail. Drawn as the ＋ on the Projects section
    * heading, and absent when the shell has no host that can make one.
    */

@@ -56,6 +56,7 @@ export function deriveProjectGroups(
     label: project.name,
     sessions: sessionsByProject.get(project.id) ?? [],
     project,
+    kind: 'project',
   }));
   if (ungrouped.length > 0) {
     groups.push({
@@ -63,6 +64,7 @@ export function deriveProjectGroups(
       label: getShellRemainingCopy(locale).projects.ungrouped,
       sessions: ungrouped,
       project: undefined,
+      kind: 'ungrouped',
     });
   }
   return groups;
