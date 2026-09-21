@@ -117,6 +117,17 @@ export function registerRuntimeHostSessionCatalogIpc(
   handleReconnectableRead(ipcMain, 'sessions:list', (_event, filter?: unknown) =>
     listSessions(normalizeSessionListFilter(filter)),
   );
+  handleReconnectableRead(ipcMain, 'sessions:get', async (_event, sessionId: unknown) => {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('Invalid Session id');
+    }
+    await recoveryTask;
+    if (pendingCleanup.has(sessionId)) return null;
+    const session = await deps.client.getSession(sessionId);
+    return session === null
+      ? null
+      : toDesktopHostSessionListSummary(session, deps.runningTurnIds(sessionId));
+  });
   ipcMain.handle('sessions:cleanupSessionCopy', async (_event, sessionId: string) => {
     await deps.sessionCopyCleanup.cleanup(sessionId);
     pendingCleanup.delete(sessionId);
